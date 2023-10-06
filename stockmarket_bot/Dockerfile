@@ -3,7 +3,7 @@ FROM python:3.9-slim
 
 # Set environment variables for Django
 ENV PYTHONUNBUFFERED 1
-ENV DJANGO_SETTINGS_MODULE stock_prediction_poc.settings
+ENV DJANGO_SETTINGS_MODULE stockmarket_bot.settings
 
 # Copy the current directory contents into the container at /app
 COPY . /app

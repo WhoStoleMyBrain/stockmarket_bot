@@ -35,6 +35,7 @@ services:
     depends_on:
       - redis
       - db
+      - web
   celery-beat:
     build:
       context: .
@@ -45,6 +46,7 @@ services:
     depends_on:
       - redis
       - db
+      - web
   db:
     image: postgres:13
     environment:
