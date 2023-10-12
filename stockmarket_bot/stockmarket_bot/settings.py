@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/4.0/ref/settings/
 """
 
 from pathlib import Path
+from celery.schedules import crontab
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -38,7 +39,10 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django_celery_beat',
+    'rest_framework',
+    'django_filters',
     'celery_app',
+    'coinbase_api',
 ]
 
 MIDDLEWARE = [
@@ -83,6 +87,14 @@ DATABASES = {
         'PASSWORD': 'mypassword',
         'HOST': 'db',  # Use the service name from docker-compose.yml
         'PORT': '5432',
+    },
+    'historical': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'historical_database',
+        'USER': 'myuser',
+        'PASSWORD': 'mypassword',
+        'HOST': 'historical_db',  # Use the service name from docker-compose.yml
+        'PORT': '5433',  # This should match the exposed port in docker-compose.yml
     }
 }
 
@@ -127,5 +139,16 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/4.0/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
 CELERY_BROKER_URL = 'redis://redis:6379/0'
 CELERY_RESULT_BACKEND = 'redis://redis:6379/0'
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+
+
+
+CELERY_BEAT_SCHEDULE = {
+    'update-ohlcv-every-hour': {
+        'task': 'coinbase_api.tasks.update_ohlcv_data',
+        'schedule': crontab(minute=0),
+    },
+}

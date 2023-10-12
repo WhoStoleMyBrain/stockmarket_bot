@@ -18,5 +18,6 @@ from django.urls import include, path
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('base_app/', include('celery_app.urls'))
+    path('base_app/', include('celery_app.urls')),
+    path('coinbase_api/', include('coinbase_api.urls')),
 ]

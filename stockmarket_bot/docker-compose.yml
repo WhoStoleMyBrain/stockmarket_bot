@@ -10,6 +10,7 @@ services:
       - .:/app
     ports:
       - "8000:8000"
+    container_name: web
     depends_on:
       - redis
       - db
@@ -23,13 +24,14 @@ services:
       - REDIS_HOSTS=local:redis:6379
     ports:
       - "8081:8081"
+    container_name: redis
     depends_on:
       - redis
   celery:
     build:
       context: .
       dockerfile: Dockerfile
-    command: celery -A stockmarket_bot worker -l info
+    command: celery -A stockmarket_bot worker -l info --uid nobody
     volumes:
       - .:/app
     depends_on:
@@ -43,6 +45,7 @@ services:
     command: celery -A stockmarket_bot beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
     volumes:
       - .:/app
+    container_name: celery_beat
     depends_on:
       - redis
       - db
@@ -53,7 +56,20 @@ services:
       - POSTGRES_DB=mydatabase
       - POSTGRES_USER=myuser
       - POSTGRES_PASSWORD=mypassword
+    container_name: db
     volumes:
       - postgres_data:/var/lib/postgresql/data
+  historical_db:
+    image: timescale/timescaledb:latest-pg13
+    environment:
+      - POSTGRES_DB=historical_database
+      - POSTGRES_USER=myuser
+      - POSTGRES_PASSWORD=mypassword
+    ports:
+      - "5433:5432"
+    container_name: historical_db
+    volumes:
+      - historical_data:/var/lib/postgresql/data
 volumes:
   postgres_data:
+  historical_data:
