@@ -55,8 +55,8 @@ class AbstractOHLCV(models.Model):
         dataframe = pd.DataFrame.from_records(data_dict_list, index='timestamp')
         dataframe.drop(columns=['id'], inplace=True)
         dataframe = dataframe.fillna(0)
-        print(dataframe.head())
-        print(dataframe.tail())
+        # print(dataframe.head())
+        # print(dataframe.tail())
         prices = dataframe[features].values
         scaler = StandardScaler()
         scaler.fit(prices)
@@ -120,8 +120,9 @@ class Prediction(models.Model):
     timestamp_predicted_at = models.DateTimeField(auto_now_add=True, db_index=True)
     model_name = models.CharField(max_length=255, db_index=True)  # e.g. 'LSTM', 'XGBoost'
     predicted_field = models.CharField(max_length=50, db_index=True)  # e.g. 'open', 'close', 'high', 'low', 'volume'
+    crypto = models.CharField(max_length=50, db_index=True, default='Bitcoin')
     predicted_value = models.FloatField(null=True)
     # any other fields you need...
 
     class Meta:
-        unique_together = ['timestamp_predicted_for', 'model_name', 'predicted_field']  # To ensure unique combination of these fields
+        unique_together = ['timestamp_predicted_for', 'model_name', 'predicted_field', 'crypto']  # To ensure unique combination of these fields
