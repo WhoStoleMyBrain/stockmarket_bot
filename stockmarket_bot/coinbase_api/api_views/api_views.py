@@ -7,13 +7,17 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 
 from coinbase_api.models import Cryptocurrency
-from coinbase_api.serializers import CryptocurrencySerializer, BitcoinSerializer, EthereumSerializer, PolkadotSerializer
+from coinbase_api.serializers import NaNJSONEncoder,CryptocurrencySerializer, BitcoinSerializer, EthereumSerializer, PolkadotSerializer
 from ..cb_auth import Granularities
 from rest_framework import viewsets, filters
+from rest_framework.renderers import JSONRenderer
+from rest_framework.views import APIView
 from django_filters import rest_framework as django_filters
 from ..models import AbstractOHLCV, Bitcoin, Ethereum, Polkadot
 from ..utilities.utils import cb_fetch_product_list, cb_fetch_product_candles
 from ..views.views import cb_fetch_product
+
+
 
 @api_view(['GET'])
 def cb_fetch_product_list_view(request):
@@ -118,12 +122,17 @@ class OHLCVFilter(django_filters.FilterSet):
         model = AbstractOHLCV
         fields = ['timestamp', 'open', 'high', 'low', 'close', 'volume']
 
+class NaNJSONRenderer(JSONRenderer):
+    encoder_class = NaNJSONEncoder
+
 class AbstractOHLCVView(viewsets.ReadOnlyModelViewSet):  # assuming you only want to read
+    renderer_classes = (NaNJSONRenderer, )
     filter_backends = (django_filters.DjangoFilterBackend, filters.OrderingFilter)
     filterset_class = OHLCVFilter
     ordering_fields = '__all__'
 
 class BitcoinView(AbstractOHLCVView):
+    renderer_classes = (NaNJSONRenderer, )
     queryset = Bitcoin.objects.all()
     serializer_class = BitcoinSerializer
 

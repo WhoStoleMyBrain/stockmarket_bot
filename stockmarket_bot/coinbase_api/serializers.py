@@ -8,25 +8,60 @@ class CryptocurrencySerializer(serializers.ModelSerializer):
         model = Cryptocurrency
         fields = ['id', 'base_display_symbol', 'quote_display_symbol','product_id', 'trading_indicator']
 
-from rest_framework import serializers
 
-crypto_fields = ['timestamp', 'open', 'high', 'low', 'close', 'volume']
 
-# class AbstractOHLCVSerializer(serializers.ModelSerializer):
-#     class Meta:
-#         fields = crypto_fields
+crypto_fields = [
+    'timestamp', 
+    'close', 
+    'volume', 
+    'sma', 
+    'ema', 
+    'rsi', 
+    'macd', 
+    'bollinger_high', 
+    'bollinger_low', 
+    'vmap',
+    'percentage_returns',
+    'log_returns',
+    ]
+
+extra_kwargs = {
+    'sma': {'required': False},
+    'ema': {'required': False},
+    'rsi': {'required': False},
+    'macd': {'required': False},
+    'bollinger_high': {'required': False},
+    'bollinger_low': {'required': False},
+    'vmap': {'required': False},
+    'percentage_returns': {'required': False},
+    'log_returns': {'required': False},
+    } 
 
 class BitcoinSerializer(serializers.ModelSerializer):
     class Meta:
         model = Bitcoin
         fields=crypto_fields
+        extra_kwargs = extra_kwargs
 
 class EthereumSerializer(serializers.ModelSerializer):
     class Meta:
         model = Ethereum
         fields=crypto_fields
+        extra_kwargs = extra_kwargs
 
 class PolkadotSerializer(serializers.ModelSerializer):
     class Meta:
         model = Polkadot
         fields=crypto_fields
+        extra_kwargs = extra_kwargs
+
+import json
+import numpy as np
+from django.core.serializers.json import DjangoJSONEncoder
+
+class NaNJSONEncoder(DjangoJSONEncoder):
+    def default(self, obj):
+        print(f'obj: {obj}')
+        if isinstance(obj, float) and np.isnan(obj):
+            return None  # or use the string "NaN"
+        return super().default(obj)

@@ -11,3 +11,4 @@ django-filter==23.3
 torch==2.1.0
 xgboost==2.0.0
 ta==0.10.2
+pandas==2.1.1

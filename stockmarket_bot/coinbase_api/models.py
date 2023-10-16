@@ -1,4 +1,8 @@
 from django.db import models
+import pandas as pd
+from torch import no_grad, tensor, float32
+import numpy as np
+import xgboost as xgb
 
 class Cryptocurrency(models.Model):
     base_display_symbol = models.CharField(max_length=255)  # For storing the symbol of the base (e.g. BTC)
@@ -24,8 +28,8 @@ class AbstractOHLCV(models.Model):
     ema = models.FloatField(null=True)
     rsi = models.FloatField(null=True)
     macd = models.FloatField(null=True)
-    bollinger_low = models.FloatField(null=True)
     bollinger_high = models.FloatField(null=True)
+    bollinger_low = models.FloatField(null=True)
     vmap = models.FloatField(null=True)
     percentage_returns = models.FloatField(null=True)
     log_returns = models.FloatField(null=True)
@@ -41,6 +45,64 @@ class AbstractOHLCV(models.Model):
             models.Index(fields=['timestamp', 'close']),   # Composite index example
             # ... add more indexes as needed ...
         ]
+
+    @staticmethod
+    def queryset_to_lstm_dataframe(queryset, seq_length=100):
+        features = ['volume', 'sma', 'ema', 'rsi', 'macd', 'bollinger_high', 'bollinger_low', 'vmap', 'percentage_returns', 'log_returns']
+        # Convert the queryset to a list of dictionaries
+        data_dict_list = queryset.values()
+        # print(data_dict_list)
+        dataframe = pd.DataFrame.from_records(data_dict_list, index='timestamp')
+        dataframe.drop(columns=['id'], inplace=True)
+        prices = dataframe[features].values
+        # print(prices[-5:])
+        X = []
+        # for i in range(len(prices) - seq_length):
+        X.append(prices[:, :len(features)])
+            # y_values = [prices[i+seq_length, len(features)+target_idx] for target_idx in range(len(targets))]
+            # y.append(y_values)
+        # Convert the list of dictionaries to a DataFrame
+        tensor_data = tensor(X, dtype=float32)
+        return tensor_data
+    
+    @staticmethod
+    def queryset_to_xgboost_dataframe(queryset):
+        def check_timestamp(ts):
+            return len(str(ts)) == 13
+        features = ['volume', 'sma', 'ema', 'rsi', 'macd', 'bollinger_high', 'bollinger_low', 'vmap', 'percentage_returns', 'log_returns']
+        # Convert the queryset to a list of dictionaries
+        data_dict_list = queryset.values()
+        # print(data_dict_list)
+        dataframe = pd.DataFrame.from_records(data_dict_list)
+        dataframe.drop(columns=['id'], inplace=True)
+        dataframe['timestamp'] = dataframe['timestamp'].apply(lambda x: x//1000 if check_timestamp(x) else x)
+        dataframe['Datetime'] = pd.to_datetime(dataframe['timestamp'], unit='s')
+        dataframe['Hour'] = dataframe['Datetime'].dt.hour
+        dataframe['Day_of_Week'] = dataframe['Datetime'].dt.dayofweek  # Monday=0, Sunday=6
+        dataframe['Day_of_Month'] = dataframe['Datetime'].dt.day
+        dataframe['Month'] = dataframe['Datetime'].dt.month
+        dataframe['Year'] = dataframe['Datetime'].dt.year
+        dataframe['Is_Weekend'] = (dataframe['Day_of_Week'] >= 5).astype(int)  # 1 for weekend, 0 for weekdays
+        # Updating the features list
+        features_extended = features + ['Hour', 'Day_of_Week', 'Day_of_Month', 'Month', 'Year', 'Is_Weekend']
+        #  ('MACD', 0.045680176),
+        #  ('SMA', 0.039496846),
+        #  ('Day_of_Week', 0.038991235),
+        #  ('Day_of_Month', 0.038741197),
+        #  ('Hour', 0.03847502),
+        #  ('Log_Returns', 0.0),
+        #  ('Is_Weekend', 0.0)]
+        drop_features = ['macd', 'sma', 'Day_of_Week', 'Day_of_Month', 'Hour', 'log_returns', 'Is_Weekend']
+        features_extended = [feature for feature in features_extended if feature not in drop_features]
+        print(f'len features: {len(features)}; len features extended: {len(features_extended)}')
+        prices = dataframe[features_extended].values
+        # X = prices[:, :-3]  # Features
+        # X = np.array(prices).reshape((1, -1))
+        X = prices
+        tmp = xgb.DMatrix(X)
+        # print(prices.tail())
+        return tmp
+        
 
 class Bitcoin(AbstractOHLCV):
     symbol = "BTC"
