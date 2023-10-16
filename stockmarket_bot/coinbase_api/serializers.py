@@ -1,7 +1,7 @@
 # serializers.py
 
 from rest_framework import serializers
-from .models import Cryptocurrency, Bitcoin, Ethereum, Polkadot
+from .models import Cryptocurrency, Bitcoin, Ethereum, Polkadot, Prediction
 
 class CryptocurrencySerializer(serializers.ModelSerializer):
     class Meta:
@@ -43,6 +43,11 @@ class BitcoinSerializer(serializers.ModelSerializer):
         fields=crypto_fields
         extra_kwargs = extra_kwargs
 
+class BitcoinViewSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Bitcoin
+        fields = ['timestamp', 'close']
+
 class EthereumSerializer(serializers.ModelSerializer):
     class Meta:
         model = Ethereum
@@ -55,13 +60,17 @@ class PolkadotSerializer(serializers.ModelSerializer):
         fields=crypto_fields
         extra_kwargs = extra_kwargs
 
-import json
-import numpy as np
-from django.core.serializers.json import DjangoJSONEncoder
+class PredictionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Prediction
+        fields = '__all__'
 
-class NaNJSONEncoder(DjangoJSONEncoder):
-    def default(self, obj):
-        print(f'obj: {obj}')
-        if isinstance(obj, float) and np.isnan(obj):
-            return None  # or use the string "NaN"
-        return super().default(obj)
+# import numpy as np
+# from django.core.serializers.json import DjangoJSONEncoder
+
+# class NaNJSONEncoder(DjangoJSONEncoder):
+#     def default(self, obj):
+#         print(f'obj: {obj}')
+#         if isinstance(obj, float) and np.isnan(obj):
+#             return None  # or use the string "NaN"
+#         return super().default(obj)

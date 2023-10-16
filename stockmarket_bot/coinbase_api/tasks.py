@@ -22,8 +22,8 @@ def update_ohlcv_data():
     for crypto in cryptos:
         print(f'Starting with crypto: {crypto.__name__}')
         #! delete the following two lines, only keep if need to redo database arises
-        all_data = crypto.objects.all()
-        all_data.delete()
+        # all_data = crypto.objects.all()
+        # all_data.delete()
 
         latest_entry = crypto.objects.order_by('-timestamp').first()
         # start = latest_entry.timestamp if latest_entry else last_full_hour(datetime.utcnow()) - timedelta(days=30)
@@ -35,6 +35,7 @@ def update_ohlcv_data():
         for _ in range(int(chunks)):
             print(f'starting with chunk {_+1} of {int(chunks)}')
             tmp_end = start + timedelta(hours=300)
+            print(f'requesting data for:{start.day}:{start.hour}-{tmp_end.day}{tmp_end.hour}')
             data = cb_fetch_product_candles(f'{crypto.symbol}-USD', int(datetime.timestamp(start)), int(datetime.timestamp(tmp_end)), Granularities.ONE_HOUR.value)
             json_data = json.loads(data.content)
             store_data(crypto, json_data["candles"])

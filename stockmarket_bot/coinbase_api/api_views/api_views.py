@@ -6,16 +6,19 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.decorators import api_view
 
-from coinbase_api.models import Cryptocurrency
-from coinbase_api.serializers import NaNJSONEncoder,CryptocurrencySerializer, BitcoinSerializer, EthereumSerializer, PolkadotSerializer
+from coinbase_api.models import Cryptocurrency,  Bitcoin
+from coinbase_api.serializers import CryptocurrencySerializer, BitcoinSerializer, EthereumSerializer, PolkadotSerializer, PredictionSerializer, BitcoinViewSerializer
 from ..cb_auth import Granularities
 from rest_framework import viewsets, filters
-from rest_framework.renderers import JSONRenderer
-from rest_framework.views import APIView
+# from rest_framework.renderers import JSONRenderer
+# from rest_framework.views import APIView
 from django_filters import rest_framework as django_filters
-from ..models import AbstractOHLCV, Bitcoin, Ethereum, Polkadot
+from ..models import AbstractOHLCV, Bitcoin, Ethereum, Polkadot, Prediction
 from ..utilities.utils import cb_fetch_product_list, cb_fetch_product_candles
 from ..views.views import cb_fetch_product
+from rest_framework.views import APIView
+import datetime
+from django.utils import timezone
 
 
 
@@ -122,17 +125,17 @@ class OHLCVFilter(django_filters.FilterSet):
         model = AbstractOHLCV
         fields = ['timestamp', 'open', 'high', 'low', 'close', 'volume']
 
-class NaNJSONRenderer(JSONRenderer):
-    encoder_class = NaNJSONEncoder
+# class NaNJSONRenderer(JSONRenderer):
+#     encoder_class = NaNJSONEncoder
 
 class AbstractOHLCVView(viewsets.ReadOnlyModelViewSet):  # assuming you only want to read
-    renderer_classes = (NaNJSONRenderer, )
+    # renderer_classes = (NaNJSONRenderer, )
     filter_backends = (django_filters.DjangoFilterBackend, filters.OrderingFilter)
     filterset_class = OHLCVFilter
     ordering_fields = '__all__'
 
 class BitcoinView(AbstractOHLCVView):
-    renderer_classes = (NaNJSONRenderer, )
+    # renderer_classes = (NaNJSONRenderer, )
     queryset = Bitcoin.objects.all()
     serializer_class = BitcoinSerializer
 
@@ -143,3 +146,31 @@ class EthereumView(AbstractOHLCVView):
 class PolkadotView(AbstractOHLCVView):
     queryset = Polkadot.objects.all()
     serializer_class = PolkadotSerializer
+
+class PredictionFilter(django_filters.FilterSet):
+    timestamp_predicted_for = django_filters.DateTimeFromToRangeFilter()
+    timestamp_predicted_at = django_filters.DateTimeFromToRangeFilter()
+    model_name = django_filters.RangeFilter()
+    predicted_field = django_filters.RangeFilter()
+    crypto = django_filters.RangeFilter()
+    predicted_value = django_filters.RangeFilter()
+
+    class Meta:
+        model = Prediction
+        fields = ['timestamp_predicted_for', 'timestamp_predicted_at', 'model_name', 'predicted_field', 'crypto', 'predicted_value']
+
+class PredictionView(viewsets.ReadOnlyModelViewSet):  # assuming you only want to read
+    # renderer_classes = (NaNJSONRenderer, )
+    filter_backends = (django_filters.DjangoFilterBackend, filters.OrderingFilter)
+    filterset_class = PredictionFilter
+    ordering_fields = '__all__'
+    queryset = Prediction.objects.all()
+    serializer_class = PredictionSerializer
+
+
+class BitcoinData(APIView):
+    def get(self, request):
+        one_week_ago = timezone.now() - datetime.timedelta(days=7)
+        data = Bitcoin.objects.filter(timestamp__gte=one_week_ago).order_by('timestamp')
+        serializer = BitcoinViewSerializer(data, many=True)
+        return Response(serializer.data)

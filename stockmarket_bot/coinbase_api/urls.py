@@ -13,12 +13,15 @@ from coinbase_api.views.views import (
     cb_get_account,
     cb_get_market_trades,
     cb_list_accounts,
+    bitcoin_chart,
     )
 
 from coinbase_api.api_views.api_views import (
     BitcoinView,
     EthereumView,
     PolkadotView,
+    PredictionView,
+    BitcoinData,
     cb_fetch_product_view,
     cb_fetch_product_candles_view, 
     cb_fetch_product_list_view
@@ -31,6 +34,8 @@ router = DefaultRouter()
 router.register(r'bitcoin', BitcoinView)
 router.register(r'ethereum', EthereumView)
 router.register(r'polkadot', PolkadotView)
+router.register(r'prediction', PredictionView)
+# router.register(r'bitcoin-data', BitcoinData)
 
 urlpatterns = [
     path('cb-fetch-coinbase-data/', cb_fetch_coinbase_data, name='cb_fetch_coinbase_data'),
@@ -48,5 +53,7 @@ urlpatterns = [
     path('cb-fetch-product-candles/', cb_fetch_product_candles_view, name='cb_fetch_product_candles'),
     path('cb-get-market-trades/', cb_get_market_trades, name='cb_get_market_trades'),
     path('cb-list-orders/', cb_list_orders, name='cb_list_orders'),
+    path('bitcoins/chart/', bitcoin_chart, name='bitcoin-chart'),
+    path('api/bitcoin/', BitcoinData.as_view(), name='bitcoin-data'),
     path('api/', include(router.urls)),
 ]

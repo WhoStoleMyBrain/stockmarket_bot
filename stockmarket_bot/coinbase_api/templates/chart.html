@@ -1,0 +1,66 @@
+<!-- templates/chart.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bitcoin Chart</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@^3"></script>
+    <script src="https://cdn.jsdelivr.net/npm/moment@^2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-moment@^1"></script>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+</head>
+<body>
+    <canvas id="bitcoinChart" width="400" height="200"></canvas>
+    <script>
+        $(document).ready(function(){
+            $.ajax({
+                url: '/coinbase_api/api/bitcoin',
+                method: 'GET',
+                success: function(data){
+                    let timestamps = data.map(d => d.timestamp);
+                    let closes = data.map(d => d.close);
+                    var ctx = document.getElementById('bitcoinChart').getContext('2d');
+                    var bitcoinChart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: timestamps,
+                            datasets: [{
+                                label: 'Close Price',
+                                data: closes,
+                                borderColor: 'rgba(75, 192, 192, 1)',
+                                borderWidth: 1
+                            }]
+                        },
+                        options: {
+                            scales: {
+                                x: {
+                                    type: 'time',
+                                    time: {
+                                        parser: 'YYYY-MM-DD HH:mm',
+                                    }
+                                },
+                                y: {
+                                    beginAtZero: true
+                                }
+                            },
+                            interaction: {
+                                mode: 'index',
+                                intersect: false,
+                            },
+                            plugins: {
+                                title: {
+                                    display: true,
+                                    text: 'Bitcoin Closing Prices Over Time'
+                                }
+                            }
+                        }
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>

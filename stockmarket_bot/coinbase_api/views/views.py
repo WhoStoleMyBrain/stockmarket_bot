@@ -5,6 +5,7 @@ from constants import API_KEY, API_SECRET
 import datetime
 from ..cb_auth import CBAuth, Method, OrderStatus
 from ..models import Bitcoin, Prediction
+from django.shortcuts import render
 
 cb_auth = CBAuth()
 cb_auth.set_credentials(API_KEY, API_SECRET)
@@ -260,3 +261,6 @@ def access_prediction_data(request):
     )
 
     # Similarly for other models...
+
+def bitcoin_chart(request):
+    return render(request, 'chart.html')
