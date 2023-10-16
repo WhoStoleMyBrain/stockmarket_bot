@@ -71,6 +71,11 @@ def predict_with_lstm(data):
     # ... logic to predict using LSTM model ...
     print('start trying to predict with lstm...')
     lstm_model = apps.get_app_config('coinbase_api').lstm_model
+    # print(f'lstm_model: {lstm_model}')
+    # for name, param in lstm_model.named_parameters():
+    #     if param.requires_grad:
+    #         print(name, param.data)
+    # print(f'data: {data}')
     with no_grad():
         output = lstm_model(data)
         probs = output.tolist()
