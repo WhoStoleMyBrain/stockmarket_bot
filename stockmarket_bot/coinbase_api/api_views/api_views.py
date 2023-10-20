@@ -5,15 +5,13 @@ import datetime
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.decorators import api_view
-
-from coinbase_api.models import Cryptocurrency,  Bitcoin
-from coinbase_api.serializers import CryptocurrencySerializer, BitcoinSerializer, EthereumSerializer, PolkadotSerializer, PredictionSerializer, BitcoinViewSerializer
+from coinbase_api.serializers import AccountSerializer, CryptocurrencySerializer, BitcoinSerializer, EthereumSerializer, PolkadotSerializer, PredictionSerializer, BitcoinViewSerializer
 from ..cb_auth import Granularities
 from rest_framework import viewsets, filters
 # from rest_framework.renderers import JSONRenderer
 # from rest_framework.views import APIView
 from django_filters import rest_framework as django_filters
-from ..models import AbstractOHLCV, Bitcoin, Ethereum, Polkadot, Prediction
+from ..models.models import Cryptocurrency, AbstractOHLCV, Account, Bitcoin, Ethereum, Polkadot, Prediction
 from ..utilities.utils import cb_fetch_product_list, cb_fetch_product_candles
 from ..views.views import cb_fetch_product
 from rest_framework.views import APIView
@@ -174,3 +172,50 @@ class BitcoinData(APIView):
         data = Bitcoin.objects.filter(timestamp__gte=one_week_ago).order_by('timestamp')
         serializer = BitcoinViewSerializer(data, many=True)
         return Response(serializer.data)
+    
+class AccountViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = Account.objects.all()
+    serializer_class = AccountSerializer
+
+
+class CryptocurrencyFilter(django_filters.FilterSet):
+    quote_display_symbol = django_filters.CharFilter()
+    base_display_symbol = django_filters.CharFilter()
+
+    class Meta:
+        model = Cryptocurrency
+        fields = ['quote_display_symbol', 'base_display_symbol']
+
+
+class CryptocurrencyViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = Cryptocurrency.objects.all()
+    serializer_class = CryptocurrencySerializer
+    filterset_class = CryptocurrencyFilter
+    filter_backends = (django_filters.DjangoFilterBackend, filters.OrderingFilter)
+    ordering_fields = '__all__'
+
+    # @action(detail=False, methods=['get'])
+    # def fetch_product_list(self, request, *args, **kwargs):
+    #     try:
+    #         data = cb_fetch_product_list()
+    #         try:
+    #             tmp = json.loads(data.content)
+    #             products = tmp['products']
+    #             self.queryset.delete()
+    #             changed_products = []
+    #             for item in products:
+    #                 item['quote_display_symbol'] = item['product_id'].split('-')[1]
+    #                 item['base_display_symbol'] = item['product_id'].split('-')[0]
+    #                 changed_products.append(item)
+    #             serializer = self.get_serializer(data=changed_products, many=True)
+    #             if serializer.is_valid():
+    #                 serializer.save()
+    #                 return Response(serializer.data, status=status.HTTP_201_CREATED)
+    #             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    #         except KeyError:
+    #             print('KeyError!')
+    #             pass
+    #     except requests.RequestException as e:
+    #         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    #     return Response(data)

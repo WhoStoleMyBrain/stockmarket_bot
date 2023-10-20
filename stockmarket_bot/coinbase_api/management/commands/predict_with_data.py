@@ -4,7 +4,7 @@ from django.db.utils import IntegrityError
 # from django_celery_beat.models import PeriodicTask, IntervalSchedule
 # from celery_app.tasks import print_statement
 # from coinbase_api.tasks import update_ohlcv_data
-from coinbase_api.models import Bitcoin, Ethereum, Polkadot, Prediction
+from coinbase_api.models.models import Bitcoin, Ethereum, Polkadot, Prediction
 from coinbase_api.tasks import predict_with_lstm, predict_with_xgboost
 
 class Command(BaseCommand):

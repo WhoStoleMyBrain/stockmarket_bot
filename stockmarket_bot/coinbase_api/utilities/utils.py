@@ -1,7 +1,21 @@
 import requests
 from django.http import JsonResponse
 from ..cb_auth import Method
-from ..views.views import cb_auth
+from ..views.views import cb_auth, cb_list_accounts
+from ..models.models import Account, Bitcoin, Ethereum, Polkadot
+import json
+from constants import crypto_models
+
+from datetime import datetime, timedelta
+from django.utils.timezone import make_aware, make_naive
+# from django.apps import apps
+from ..cb_auth import Granularities
+# from .utilities.utils import cb_fetch_product_candles
+from .ml_utils import add_calculated_parameters
+import json
+
+
+
 
 def cb_fetch_product_list():
     """
@@ -65,3 +79,163 @@ def cb_fetch_product_candles(product_id, start, end, granularity):
     except requests.RequestException as e:
         return JsonResponse({'error': str(e)}, status=500)
     return JsonResponse(data)
+
+def cb_fetch_available_crypto():
+    print('trying to fetch crypto...')
+    cursor = None
+    has_next = True
+    while has_next:
+        data = cb_list_accounts(cursor)
+        response_content = data.content.decode('utf-8')
+        json_data = json.loads(response_content)
+        accounts_data = json_data.get('accounts', [])
+        print(json_data)
+        print(accounts_data)
+        for account_data in accounts_data:
+            # account = Account.objects.get_or_create(name=account_data.get('name', ''), uuid=)
+            try:
+                account = Account.objects.get(
+                    name=account_data.get('name', ''),
+                    uuid=account_data.get('uuid', ''),
+                )
+            except Account.DoesNotExist:
+                account = Account(
+                    name=account_data.get('name', ''),
+                    uuid=account_data.get('uuid', ''),
+                )
+
+            # account, created = Account.objects.get_or_create(
+            #     name=account_data.get('name', ''),
+            #     uuid=account_data.get('uuid', ''),
+            # )
+            account.currency=account_data.get('currency', ''),
+            account.value=account_data.get('available_balance', {}).get('value', 0)
+            account.save()
+
+        has_next = data.get('has_next', False)
+        cursor = data.get('cursor')
+        print(f'Fetching of crypto done. did store {len(accounts_data)} items.')
+        # TODO
+        #! the break is here since the cb_auth method currently does not support pagination
+        #! since a header token is needed for the pagination requests. 
+        #! see https://docs.cloud.coinbase.com/exchange/docs/rest-pagination for more details
+        break
+
+def initialize_default_cryptos(initial_volume=1000):
+    all_accounts = Account.objects.all()
+    all_accounts.delete()
+    cryptos = [Bitcoin, Ethereum, Polkadot]
+    uuid='00000000-0000-0000-0000-000000000000'
+    euro = Account(
+        name='EUR Wallet',
+        uuid=uuid,
+        currency='EUR',
+        value=initial_volume,
+    )
+    euro.save()
+    for crypto in cryptos:
+        crypto_account = Account(
+            name=f'{crypto.symbol} Wallet',
+            uuid=uuid,
+            currency=crypto.symbol,
+            value=0,
+        )
+        crypto_account.save()
+
+def calculate_total_volume():
+    cryptos = crypto_models
+    try:
+        eur = Account.objects.get(name='EUR Wallet')
+    except Account.DoesNotExist:
+        print('Euro does not exist')
+        return
+    volume = eur.value
+    print(f'Euro value: {volume}')
+    for crypto in cryptos:
+        latest_entry = crypto.objects.latest('timestamp')
+        try:
+            crypt = Account.objects.get(name=f'{crypto.symbol} Wallet')
+        except Account.DoesNotExist:
+            print(f'Could not find: {crypto.symbol} Wallet')
+            return
+        volume += crypt.value * latest_entry.close
+    return volume
+
+
+########################   Here starts the historical db update   ######################
+
+def last_full_hour(date_time):
+    return date_time.replace(minute=0, second=0, microsecond=0)
+
+def update_ohlcv_data():
+    cryptos = [Bitcoin, Ethereum, Polkadot]  # Models for cryptos we want to update
+    granularity = 3600  # 1 hour in seconds
+
+    for crypto in cryptos:
+        print(f'Starting with crypto: {crypto.__name__}')
+        #! delete the following two lines, only keep if need to redo database arises
+        # all_data = crypto.objects.all()
+        # all_data.delete()
+
+        latest_entry = crypto.objects.order_by('-timestamp').first()
+        # start = latest_entry.timestamp if latest_entry else last_full_hour(datetime.utcnow()) - timedelta(days=30)
+        start = make_naive(latest_entry.timestamp) if latest_entry else last_full_hour(datetime.now()) - timedelta(days=30)
+        end = last_full_hour(datetime.now())
+        delta = end - start
+        required_data_points = delta.total_seconds() / granularity
+        chunks = -(-required_data_points // 300)  # Calculate the number of chunks (ceiling division)
+        for _ in range(int(chunks)):
+            print(f'starting with chunk {_+1} of {int(chunks)}')
+            tmp_end = start + timedelta(hours=300)
+            print(f'requesting data for {start.day}:{start.hour}-{tmp_end.day}:{tmp_end.hour}')
+            data = cb_fetch_product_candles(f'{crypto.symbol}-USD', int(datetime.timestamp(start)), int(datetime.timestamp(tmp_end)), Granularities.ONE_HOUR.value)
+            json_data = json.loads(data.content)
+            store_data(crypto, json_data["candles"])
+            start += timedelta(hours=300)  # Move start ahead by 300 hours
+            print(f'finished with chunk {_+1} of {int(chunks)}')
+
+        # Deleting data older than a month
+        add_calculated_parameters(crypto)
+        month_ago = make_aware(datetime.utcnow() - timedelta(days=30))
+        crypto.objects.filter(timestamp__lt=month_ago).delete()
+        print(f'Finished with crypto: {crypto.__name__}, {crypto._meta.model_name}')
+    #! need to update new_data to fetch subset of data and also fetch all crypto data types
+    # new_data = Bitcoin.objects.all()
+    # chain(predict_with_lstm.s(new_data), predict_with_xgboost.s(new_data)).apply_async()
+
+def store_data(crypto_model, data):
+    try:
+        for item in data:
+            timestamp, low, high, opening, close_base, volume = float(item["start"]), float(item["low"]), float(item["high"]), float(item["open"]), float(item["close"]), float(item["volume"])
+            new_entry = crypto_model.objects.create(
+                timestamp=make_aware(datetime.utcfromtimestamp(int(timestamp))),
+                open=opening,
+                high=high,
+                low=low,
+                close=close_base,
+                volume=volume,
+            )
+            new_entry.save()
+    except Exception as e:
+        print(f'Encountered the following error: {e}')
+
+def cb_find_earliest_data(product_id='BTC-USDC'):
+    print(f'product_id: {product_id}')
+    granularity = Granularities.ONE_DAY.value
+    end = int(datetime.timestamp(datetime.now()))
+    earliest_date = None
+    i = 0
+    while True:
+        end = int(datetime.timestamp(datetime.now() - timedelta(days=300*i)))
+        start = int(datetime.timestamp(datetime.now() - timedelta(days=300*(i+1))))
+        data = cb_fetch_product_candles(product_id, start, end, granularity)
+        tmp = json.loads(data.content)
+        try:
+            print(f'for {product_id} found the following data for idx {i}: {len(tmp["candles"])} \nLast timestamp was: {tmp["candles"][-1]["start"]}')
+            earliest_date = int(tmp['candles'][-1]['start'])
+        except (IndexError, KeyError) as error:
+            print(f'Error trying to get the earliest date: {error}')
+            break
+        i+=1
+
+    return earliest_date

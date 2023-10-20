@@ -3,7 +3,7 @@ from django.core.management.base import BaseCommand
 # from django_celery_beat.models import PeriodicTask, IntervalSchedule
 # from celery_app.tasks import print_statement
 # from coinbase_api.tasks import update_ohlcv_data
-from coinbase_api.models import Prediction
+from coinbase_api.models.models import Prediction
 # from coinbase_api.tasks import predict_with_lstm, predict_with_xgboost
 from datetime import datetime, timezone, timedelta
 from django.utils.timezone import make_aware

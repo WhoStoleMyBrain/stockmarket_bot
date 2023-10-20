@@ -126,3 +126,16 @@ class Prediction(models.Model):
 
     class Meta:
         unique_together = ['timestamp_predicted_for', 'model_name', 'predicted_field', 'crypto']  # To ensure unique combination of these fields
+
+class Account(models.Model):
+    name = models.CharField(max_length=255)
+    uuid = models.UUIDField()
+    currency = models.CharField(max_length=10)
+    value = models.FloatField()
+
+class CryptoMetadata(models.Model):
+    symbol = models.CharField(max_length=10, unique=True)
+    earliest_date = models.DateTimeField()
+
+    def __str__(self):
+        return self.symbol

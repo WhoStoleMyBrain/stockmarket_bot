@@ -8,7 +8,6 @@ from coinbase_api.views.views import (
     cb_fetch_data_for_btc,
     cb_list_orders,
     cb_fetch_exchange_rates,
-    cb_fetch_product,
     cb_fetch_product_book,
     cb_get_account,
     cb_get_market_trades,
@@ -18,13 +17,16 @@ from coinbase_api.views.views import (
 
 from coinbase_api.api_views.api_views import (
     BitcoinView,
+    CryptocurrencyViewSet,
     EthereumView,
     PolkadotView,
     PredictionView,
     BitcoinData,
+    AccountViewSet,
     cb_fetch_product_view,
     cb_fetch_product_candles_view, 
-    cb_fetch_product_list_view
+    cb_fetch_product_list_view,
+    # cb_fetch_products_view
 )
 
 from django.urls import path, include
@@ -35,6 +37,8 @@ router.register(r'bitcoin', BitcoinView)
 router.register(r'ethereum', EthereumView)
 router.register(r'polkadot', PolkadotView)
 router.register(r'prediction', PredictionView)
+router.register(r'accounts', AccountViewSet)
+router.register(r'cryptocurrencies', CryptocurrencyViewSet, basename='cryptocurrency')
 # router.register(r'bitcoin-data', BitcoinData)
 
 urlpatterns = [
@@ -48,6 +52,7 @@ urlpatterns = [
     path('cb-fetch-product-book/', cb_fetch_product_book, name='cb_fetch_product_book'),
     path('cb-fetch-product-list/', cb_fetch_product_list_view, name='cb_fetch_product_list'),
     path('cb-fetch-product/', cb_fetch_product_view, name='cb_fetch_product'),
+    # path('cb-fetch-products/', cb_fetch_products_view, name='cb_fetch_products'),
     path('cb-list-accounts/', cb_list_accounts, name='cb_list_accounts'),
     path('cb-get-account/', cb_get_account, name='cb_get_account'),
     path('cb-fetch-product-candles/', cb_fetch_product_candles_view, name='cb_fetch_product_candles'),

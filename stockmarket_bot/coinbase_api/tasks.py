@@ -2,7 +2,7 @@
 from datetime import datetime, timedelta
 from django.utils.timezone import make_aware, make_naive
 from django.apps import apps
-from .models import AbstractOHLCV, Bitcoin, Ethereum, Polkadot, Prediction
+from .models.models import AbstractOHLCV, Bitcoin, Ethereum, Polkadot, Prediction
 from .cb_auth import Granularities
 from .utilities.utils import cb_fetch_product_candles
 from .utilities.ml_utils import add_calculated_parameters
@@ -35,7 +35,7 @@ def update_ohlcv_data():
         for _ in range(int(chunks)):
             print(f'starting with chunk {_+1} of {int(chunks)}')
             tmp_end = start + timedelta(hours=300)
-            print(f'requesting data for:{start.day}:{start.hour}-{tmp_end.day}{tmp_end.hour}')
+            print(f'requesting data for {start.day}:{start.hour}-{tmp_end.day}:{tmp_end.hour}')
             data = cb_fetch_product_candles(f'{crypto.symbol}-USD', int(datetime.timestamp(start)), int(datetime.timestamp(tmp_end)), Granularities.ONE_HOUR.value)
             json_data = json.loads(data.content)
             store_data(crypto, json_data["candles"])

@@ -1,10 +1,10 @@
 import requests
 from django.http import JsonResponse
 from coinbase.wallet.client import Client
-from constants import API_KEY, API_SECRET
+from constants import API_KEY, API_SECRET, crypto_models
 import datetime
 from ..cb_auth import CBAuth, Method, OrderStatus
-from ..models import Bitcoin, Prediction
+from ..models.models import Bitcoin, Prediction
 from django.shortcuts import render
 
 cb_auth = CBAuth()
@@ -161,6 +161,35 @@ def cb_fetch_product(product_id):
         return JsonResponse({'error': f'KeyError: {e}'}, status=500)
     return JsonResponse(data)
 
+def cb_fetch_products():
+    """
+    @param product_ids - List of product IDs to return.\n
+    Get information on a single product by product ID.\n
+    datastructure: \n
+    -product_id\n
+    -price\n
+    -price_percentage_change_24h\n
+    -volume_24h\n
+    -volume_percentage_change_24h\n
+    -base_increment\n
+    -quote_increment\n
+    -quote_min_size\n
+    -quote_max_size\n
+    -base_min_size\n
+    -base_max_size\n
+    -base_name\n
+    -quote_name\n
+    -watched\n
+    ... for more see result\n
+    """
+    try:
+        data = cb_auth(Method.GET.value, f"/api/v3/brokerage/products")
+    except requests.RequestException as e:
+        return JsonResponse({'error': str(e)}, status=500)
+    except KeyError as e:
+        return JsonResponse({'error': f'KeyError: {e}'}, status=500)
+    return JsonResponse(data)
+
 def cb_list_accounts(request):
     '''
     @param limit - the pagination limit\n
@@ -169,6 +198,22 @@ def cb_list_accounts(request):
     (e.g. BTC, ETH, DOT) that are linked to your account
     -> This is the endpoint where the available assets can be retrieved
     -> Note: It seems that staked assets are not available here, as intended
+    datastructure:
+    accounts
+    --[id]
+    ----uuid
+    ----name
+    ----currency
+    ----available_balance
+    ------value
+    ------currency
+    ----ready
+    ----hold
+    ------value
+    ------currency
+    has_next
+    cursor
+    size
     '''
     try:
         data = cb_auth(Method.GET.value, "/api/v3/brokerage/accounts")
@@ -178,7 +223,7 @@ def cb_list_accounts(request):
 
 def cb_get_account(request):
     '''
-    @param account_uuit - UUID of the account to be retrieved\n
+    @param account_uuid - UUID of the account to be retrieved\n
     Even though this endpoints tells you account, it is actually single wallets
     (e.g. BTC, ETH, DOT) that are linked to your account
     Retrieves information about a single account, however same info as for the 
