@@ -1,12 +1,12 @@
 from typing import List
 import gymnasium as gym
 from gymnasium import spaces
-from coinbase_api.utilities.utils import calculate_total_volume
+from coinbase_api.utilities.utils import calculate_total_volume, initialize_default_cryptos
 import numpy as np
 from coinbase_api.models.models import AbstractOHLCV, Account, Bitcoin, Ethereum, Polkadot, Prediction
 from constants import crypto_models, crypto_features, crypto_predicted_features, crypto_extra_features
 from coinbase_api.utilities.prediction_handler import PredictionHandler
-from ..enums import Database
+from ..enums import Database, Actions
 from enum import Enum
 from datetime import datetime, timedelta
 from django.db import transaction
@@ -24,32 +24,181 @@ class AbstractDataHandler:
     def reset_state(self):
         raise NotImplementedError
 
-    def initial_state(self):
-        raise NotImplementedError
-
 class SimulationDataHandler(AbstractDataHandler):
     def __init__(self, initial_volume = 1000):
+        #! need to also initialize the account table
+        self.maker_fee = 0.004  # 0.4%
+        self.taker_fee = 0.006  # 0.6%
+        self.initial_volume = initial_volume
+        self.database = Database.SIMULATION.value
         self.crypto_models:List[AbstractOHLCV] = crypto_models
         self.total_volume = initial_volume
-        self.account_holdings = {crypto.symbol:0 for crypto in self.crypto_models}
-        self.crypto_data = self.get_crypto_data()
-        self.usdc_held = initial_volume
+        self.account_holdings = [0 for _ in self.crypto_models]
         self.timestamp = datetime(year=2020, month=1, day=1, hour=0, minute=0, second=0) #! this is the start time
-        self.prediction_handler = PredictionHandler(lstm_sequence_length=100, database=Database.SIMULATION.value, timestamp=self.timestamp)
+        self.prediction_handler = PredictionHandler(lstm_sequence_length=100, database=self.database, timestamp=self.timestamp)
+        self.prepare_simulation_database()
+    
+    def get_current_state(self):
+        total_volume = calculate_total_volume(database=self.database)
+        account_holdings = self.get_account_holdings()
+        new_crypto_data = self.get_new_crypto_data()
+        usdc_held = self.get_liquidity()
+        return [total_volume, usdc_held] + account_holdings + new_crypto_data
 
+    def update_state(self, action):
+        #! need to perform action, i.e. calculate cost, update account holdings, 
+        #!      update crypto database, update predictions (make new ones), update liquidity 
+        cost_for_action = self.cost_for_action(action)
+        # for efficiency get the indices in the beginning
+        buy_indices = [idx for idx, i in enumerate(action) if i == Actions.SELL.value]
+        sell_indices = [idx for idx, i in enumerate(action) if i == Actions.BUY.value]
+        if len(buy_indices) > 0:
+            individual_liquidity = (self.get_liquidity() - cost_for_action)/len(buy_indices)
+            for idx in buy_indices:
+                # buying... update account holding
+                crypto_model = self.crypto_models[idx]
+                try:
+                    crypto_account = self.get_crypto_account(crypto_model.symbol)
+                except Account.DoesNotExist:
+                    continue
+                # get price
+                crypto_value = crypto_model.objects.using(self.database).latest('timestamp').close
+                crypto_account.value += individual_liquidity/crypto_value
+                crypto_account.save(using=self.database)
+        if len(sell_indices) > 0:
+            for idx in sell_indices:
+                    crypto_model = self.crypto_models[idx]
+                    try:
+                        crypto_account = self.get_crypto_account(crypto_model.symbol)
+                        usdc_account = self.get_crypto_account('USDC')
+                    except Account.DoesNotExist:
+                        continue
+                    # get price
+                    crypto_value = crypto_model.objects.using(self.database).latest('timestamp').close
+                    total_value = crypto_value * crypto_account.value
+                    usdc_account.value += total_value
+                    usdc_account.save(using=self.database)
+                    crypto_account.value = 0
+                    crypto_account.save(using=self.database)
+        # fetching new crypto data
+        new_timestamp = self.timestamp + timedelta(hours=1)
+        done = False
+        for crypto in self.crypto_models:
+            try:
+                historical_data = crypto.objects.using(Database.HISTORICAL.value).get(timestamp=new_timestamp)
+            except crypto.DoesNotExist:
+                done = True
+                print(f'No new data for {crypto.symbol}')
+                break
+            new_data = self.get_new_instance(crypto_model=crypto, instance=historical_data)
+            new_data.save(using=self.database)
+
+        # make new predictions
+        self.prediction_handler.predict()
+        next_state = self.get_current_state()
+        info = {}
+        return next_state, cost_for_action, done, info
+
+    def get_crypto_account(self, symbol):
+        try:
+            crypto_account = Account.objects.using(self.database).get(name=f'{symbol} Wallet')
+            return crypto_account
+        except Account.DoesNotExist:
+            print(f'Account {symbol} Wallet does not exist!')
+            raise Account.DoesNotExist
+
+    def reset_state(self):
+        self.maker_fee = 0.004  # 0.4%
+        self.taker_fee = 0.006  # 0.6%
+        self.initial_volume = self.initial_volume
+        self.database = Database.SIMULATION.value
+        self.crypto_models:List[AbstractOHLCV] = crypto_models
+        self.total_volume = self.initial_volume
+        self.account_holdings = [0 for _ in self.crypto_models]
+        self.timestamp = datetime(year=2020, month=1, day=1, hour=0, minute=0, second=0) #! this is the start time
+        self.prediction_handler = PredictionHandler(lstm_sequence_length=100, database=self.database, timestamp=self.timestamp)
+        self.prepare_simulation_database()
+        initial_state = self.get_current_state()
+        return initial_state
+    
+    def get_crypto_data(self):
+        all_entries = []
+        for crypto in self.crypto_models:
+            crypto_latest = crypto.objects.using(self.database).latest('timestamp')
+            all_entries = all_entries + self.crypto_to_list(crypto_latest)
+            all_entries = all_entries + self.get_new_prediction_data(crypto, crypto_latest.timestamp)
+        return all_entries
+    
+    def cost_for_action(self, action):
+        total_cost = 0
+        for idx, crypto_action in enumerate(action):
+            # crypto, volume, is_buy = crypto_action  # Assuming this structure
+            is_buy = True if crypto_action == Actions.BUY.value else False
+            print(f'trying to buy {self.crypto_models[idx].__name__}? {is_buy}')
+            crypto = self.crypto_models[idx]
+            # volume = self.crypto_models[idx]
+            try:
+                transaction_volume = self.calculate_transaction_volume(crypto, is_buy)
+            except Account.DoesNotExist:
+                continue
+            # Deduct the transaction cost from the reward
+            fee_rate = self.maker_fee if is_buy else self.taker_fee  # Assuming maker fee for buy, taker fee for sell
+            transaction_cost = transaction_volume * fee_rate
+            total_cost += transaction_cost
+        return total_cost
+    
+    def calculate_transaction_volume(self, crypto: AbstractOHLCV, is_buy):
+        if is_buy:
+            crypto_account = self.get_crypto_account('USDC')
+            transaction_volume = crypto_account.value
+        else:
+            crypto_account = self.get_crypto_account(crypto.symbol)
+            price = crypto.objects.using(self.database).latest('timestamp').close
+            transaction_volume = price * crypto_account.value
+        return transaction_volume  # Assuming this is the result of your method
+
+    def get_crypto_features(self):
+        return crypto_features
+
+    def get_crypto_predicted_features(self):
+        return crypto_predicted_features
+    
+    def get_extra_features(self):
+        return crypto_extra_features
+    
+    def crypto_to_list(self, crypto: AbstractOHLCV):
+        return [getattr(crypto, fieldname) for fieldname in self.get_crypto_features()]
+    
+    def get_new_prediction_data(self, crypto_model:AbstractOHLCV, timestamp:datetime):
+        all_entries = []
+        ml_models = ['LSTM', 'XGBoost']
+        prediction_shifts = [1,24,168]
+        for model in ml_models:
+            for prediction_shift in prediction_shifts:
+                try:
+                    entry = Prediction.objects.using(self.database).get(
+                        crypto=crypto_model.__name__,
+                        timestamp_predicted_for = timestamp, 
+                        model_name = model, 
+                        predicted_field = f'close_higher_shifted_{prediction_shift}h'
+                    )
+                    all_entries.append(entry.predicted_value)
+                except Prediction.DoesNotExist:
+                    print(f'Prediction {crypto_model.__name__}, {timestamp}, {model}, close_higher_shifted_{prediction_shift}h Does not exist')
+                    all_entries.append(0)
+        return all_entries
+    
     def prepare_simulation_database(self):
         #! 1. delete all predictions and crypto model entries.
         #! 2. fetch all data up to the current timestamp: crypto models
-        #! 3. predict on all data from current timestamp to final entry 
-        #!    in historical db at once and save the predictions
+        #! 3. prepare the account database
         # 1. deletion
         print(f'Preparing simulation.')
         print(f'Deleting predictions')
-        predictions = Prediction.objects.using(Database.SIMULATION.value).all()
-        predictions.delete()
+        self.prediction_handler.restore_prediction_database()
         for crypto_model in self.crypto_models:
             print(f'Deleting model data for {crypto_model.symbol}')
-            crypto_model.objects.using(Database.SIMULATION.value).all().delete()
+            crypto_model.objects.using(self.database).all().delete()
         # 2. fetch data
         for crypto_model in self.crypto_models:
             print(f'Fetching model data for {crypto_model.symbol}')
@@ -62,18 +211,18 @@ class SimulationDataHandler(AbstractDataHandler):
                 #TODO Improve model saving...
                 new_instance = self.get_new_instance(crypto_model, obj)
                 new_instances.append(new_instance)
-            with transaction.atomic(using=Database.SIMULATION.value):
-                crypto_model.objects.using(Database.SIMULATION.value).bulk_create(new_instances)
-        # 3. redoing predictions. This is important as models might be retrained!
-        #! scratch that, for now predictions will be done live. Might be efficient enough
-        # prediction_handler = PredictionHandler(lstm_sequence_length=100, database=Database.SIMULATION.value, timestamp=self.timestamp)
-        # total_number_of_data = self.crypto_models[0].objects.using(Database.HISTORICAL.value).filter(timestamp__gte=self.timestamp).count()
-        # for i in range(total_number_of_data):
-        #     prediction_handler.predict()
-        #     prediction_handler.timestamp = prediction_handler.timestamp + timedelta(hours=1)
-        # for crypto_model in self.crypto_models:
+            with transaction.atomic(using=self.database):
+                crypto_model.objects.using(self.database).bulk_create(new_instances)
+        # 3. prepare the account database
+        self.reset_account_data()
 
-    def get_new_instance(self, crypto_model:AbstractOHLCV, instance:AbstractOHLCV):
+    def reset_account_data(self):
+        account_data = Account.objects.using(self.database).all()
+        account_data.delete()
+        initialize_default_cryptos(initial_volume=self.initial_volume, database=self.database)
+        
+
+    def get_new_instance(self, crypto_model:AbstractOHLCV, instance:AbstractOHLCV) -> AbstractOHLCV:
         return crypto_model(
                     timestamp=instance.timestamp,
                     open=instance.open,
@@ -94,84 +243,42 @@ class SimulationDataHandler(AbstractDataHandler):
                     close_higher_shifted_24h=instance.close_higher_shifted_24h,
                     close_higher_shifted_168h=instance.close_higher_shifted_168h,
                 )
-    def get_current_state(self):
-        # state is:
-        # timestamp (internal only, relevant for state changes)
-        # total volume
-        # account holdings
-        # new crypto data
-        # eur held (USDC held in the future...)
+    
+    def get_liquidity(self):
+        try:
+            usdc_account = self.get_crypto_account('USDC')
+            return usdc_account.value
+        except Account.DoesNotExist:
+            print('USDC Account does not exist?!?')
+            return 0
         
-        pass
-
-    def update_state(self, action):
-        # update the state based on the action and self.mode
-        pass
-
-    def get_crypto_data(self):
+    def get_account_holdings(self):
+        account_holdings = []
+        for crypto in self.crypto_models:
+            try:
+                account = Account.objects.using(self.database).get(name=f'{crypto.symbol} Wallet')
+            except Account.DoesNotExist:
+                print(f'Account "{crypto.symbol} Wallet" does not exist')
+                continue
+            account_holdings.append(account.value)
+        return account_holdings
+    
+    def get_new_crypto_data(self):
         all_entries = []
         for crypto in self.crypto_models:
-            crypto_latest = crypto.objects.latest('timestamp')
+            crypto_latest = crypto.objects.using(self.database).latest('timestamp')
             all_entries = all_entries + self.crypto_to_list(crypto_latest)
             all_entries = all_entries + self.get_new_prediction_data(crypto, crypto_latest.timestamp)
-        return all_entries
-
-    def reset_state(self):
-        # return a reset state
-        pass
-
-    def initial_state(self):
-        # return the initial state
-        pass
-
-    def get_crypto_features(self):
-        return crypto_features
-
-    def get_crypto_predicted_features(self):
-        return crypto_predicted_features
-    
-    def get_extra_features(self):
-        return crypto_extra_features
-    
-    def crypto_to_list(self, crypto: AbstractOHLCV):
-        return [getattr(crypto, fieldname) for fieldname in self.get_crypto_features()]
-    
-    def get_new_prediction_data(self, crypto_model, timestamp):
-        all_entries = []
-        ml_models = ['LSTM', 'XGBoost']
-        prediction_shifts = [1,24,168]
-        for model in ml_models:
-            for prediction_shift in prediction_shifts:
-                try:
-                    entry = Prediction.objects.get(
-                        crypto=crypto_model.__name__,
-                        timestamp_predicted_for = timestamp, 
-                        model_name = model, 
-                        predicted_field = f'close_higher_shifted_{prediction_shift}h'
-                    )
-                    all_entries.append(entry.predicted_value)
-                except Prediction.DoesNotExist:
-                    print(f'Prediction {crypto_model.__name__}, {timestamp}, {model}, close_higher_shifted_{prediction_shift}h Does not exist')
-                    all_entries.append(0)
         return all_entries
 
 class CustomEnv(gym.Env):
     def __init__(self, data_handler:AbstractDataHandler, asymmetry_factor:float=2):
         super(CustomEnv, self).__init__()
-
-        # Define action and observation space
-        # Assume discrete actions (buy, sell, hold) for simplicity
-        # You may need a more complex action space for different assets or continuous actions
-        # self.action_space = spaces.Discrete(3)
         self.crypto_models = crypto_models
         self.data_handler = data_handler
         N = len(self.crypto_models)
         self.action_space = spaces.MultiDiscrete([3] * N)  # where N is the number of cryptocurrencies
-        self.crypto_data = self.get_crypto_data()
         self.prev_total_volume = None
-        self.prev_account_holdings = None
-        self.prev_newest_crypto_data = None
-        self.prev_eur_held = None
         self.asymmetry_factor = asymmetry_factor
         self.maker_fee = 0.004  # 0.4%
         self.taker_fee = 0.006  # 0.6%
@@ -180,54 +287,24 @@ class CustomEnv(gym.Env):
         self.extra_features = self.get_extra_features()
 
         M = len(self.features) + len(self.predicted_features) + len(self.extra_features)
-        shape_value = M*N + 2 #! +1 because of total volume held and EUR value held
+        shape_value = M*N + 2 #! +1 because of total volume held and USDC value held
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(shape_value,), dtype=np.float32)
 
-        # TODO: Load historical data, ML models, etc.
-
     def step(self, action):
-        # save previous values
-        # get new values
-        total_volume = calculate_total_volume()
-        account_holdings = self.get_account_holdings()
-        newest_crypto_data = self.get_new_crypto_data()
-        eur_held = self.get_eur_held()
-        # calculate reward
-        reward_q = self.calculate_reward_quadratic(action, total_volume, account_holdings, eur_held)
-        # reward_e = self.calculate_reward_exponential(action, total_volume, account_holdings, eur_held)
-        # reward_vn = self.calculate_reward_volume_normalized(action, total_volume, account_holdings, eur_held)
-        # reward_sharpe = self.calculate_reward_sharpe_ratio(action, total_volume, account_holdings, eur_held)
+        next_state, cost_for_action, done, info = self.data_handler.update_state(action)
+        total_volume = next_state[0]
+        reward_q = self.calculate_reward_quadratic(action, total_volume, cost_for_action)
         self.prev_total_volume = total_volume
-        self.prev_account_holdings = account_holdings
-        self.prev_eur_held = eur_held
-        next_state_concatenated = [total_volume, eur_held] + account_holdings + newest_crypto_data
-        print(f'next_state_concatenated: {next_state_concatenated}')
-        next_state = next_state_concatenated
-        # reward = 0  # Replace with actual reward calculation
-        done = False  # Replace with actual termination condition
-        info = {}  # Optional: Provide additional information
+        # print(f'next_state: {next_state}')
         return next_state, reward_q, done, info
 
     def reset(self):
-        # Reset the state of the environment to an initial state
-        # TODO: Reset your system's state
         self.crypto_models = crypto_models
-        self.crypto_data = self.get_crypto_data()
         self.prev_total_volume = None
-        self.prev_account_holdings = None
-        self.prev_newest_crypto_data = None
-        self.prev_eur_held = None
-        total_volume = calculate_total_volume()
-        account_holdings = self.get_account_holdings()
-        newest_crypto_data = self.get_new_crypto_data()
-        eur_held = self.get_eur_held()
-        next_state_concatenated = [total_volume, eur_held] + account_holdings + newest_crypto_data
-
         self.features =self.get_crypto_features()
         self.predicted_features = self.get_crypto_predicted_features()
         self.extra_features = self.get_extra_features()
-        # Mockup for initial_state
-        initial_state = next_state_concatenated  # Replace with actual initial state
+        initial_state = self.data_handler.reset_state()
         return initial_state
 
     def render(self, mode='human'):
@@ -248,46 +325,7 @@ class CustomEnv(gym.Env):
     def get_extra_features(self):
         return crypto_extra_features
 
-    def crypto_to_list(self, crypto: AbstractOHLCV):
-        return [getattr(crypto, fieldname) for fieldname in self.features]
-
-    def calculate_transaction_volume(self, crypto: AbstractOHLCV, is_buy):
-        if is_buy:
-            try:
-                crypto_account = Account.objects.get(name=f'EUR Wallet')
-            except Account.DoesNotExist:
-                print('Account with name "EUR Wallet" not found')
-                raise Account.DoesNotExist
-            transaction_volume = crypto_account.value
-        else:
-            try:
-                crypto_account = Account.objects.get(name=f'{crypto.symbol} Wallet')
-            except Account.DoesNotExist:
-                print(f'Account with name "{crypto.symbol} Wallet" not found')
-                raise Account.DoesNotExist
-            price = crypto.objects.latest('timestamp').close
-            transaction_volume = price * crypto_account.value
-        return transaction_volume  # Assuming this is the result of your method
-    
-    def cost_for_action(self, action):
-        total_cost = 0
-        for idx, crypto_action in enumerate(action):
-            # crypto, volume, is_buy = crypto_action  # Assuming this structure
-            is_buy = True if crypto_action == 2 else False
-            print(f'trying to buy {self.crypto_models[idx].__name__}? {is_buy}')
-            crypto = self.crypto_models[idx]
-            # volume = self.crypto_models[idx]
-            try:
-                transaction_volume = self.calculate_transaction_volume(crypto, is_buy)
-            except Account.DoesNotExist:
-                continue
-            # Deduct the transaction cost from the reward
-            fee_rate = self.maker_fee if is_buy else self.taker_fee  # Assuming maker fee for buy, taker fee for sell
-            transaction_cost = transaction_volume * fee_rate
-            total_cost += transaction_cost
-        return total_cost
-
-    def calculate_reward_quadratic(self, action, total_volume, account_holdings, eur_held):
+    def calculate_reward_quadratic(self, action, total_volume, cost_for_action):
         if self.prev_total_volume is None:
             # This is the first step, so there's no previous volume to compare to
             return 0
@@ -297,10 +335,10 @@ class CustomEnv(gym.Env):
             reward = volume_diff ** 2
         else:
             reward = -self.asymmetry_factor * (volume_diff ** 2)  # Negative to indicate a punishment
-        reward = reward - self.cost_for_action(action)
+        reward = reward - cost_for_action
         return reward
     
-    def calculate_reward_exponential(self,action, total_volume, account_holdings, eur_held):
+    def calculate_reward_exponential(self,action, total_volume, cost_for_action):
         if self.prev_total_volume is None:
             return 0
         volume_diff = total_volume - self.prev_total_volume
@@ -308,29 +346,24 @@ class CustomEnv(gym.Env):
             reward = np.exp(volume_diff) - 1
         else:
             reward = -self.asymmetry_factor * (np.exp(-volume_diff) - 1)
-            reward = reward - self.cost_for_action(action)
+            reward = reward - cost_for_action
         return reward
     
-    def calculate_reward_volume_normalized(self,action, total_volume, account_holdings, eur_held):
+    def calculate_reward_volume_normalized(self,action, total_volume, cost_for_action):
         if self.prev_total_volume is None:
             return 0
-
         volume_diff = total_volume - self.prev_total_volume
-        
         # Assuming you have a method to get the standard deviation of past volume changes
         std_dev = self.exponential_moving_std_dev()  
-        
         normalized_diff = volume_diff / (std_dev + 1e-8)  # Adding a small value to avoid division by zero
-        
         if normalized_diff > 0:
             reward = normalized_diff ** 2
         else:
-            reward = -2 * (normalized_diff ** 2)
-            reward = reward - self.cost_for_action(action)
-
+            reward = -self.asymmetry_factor * (normalized_diff ** 2)
+            reward = reward - cost_for_action
         return reward
     
-    def calculate_reward_sharpe_ratio(self,action, total_volume, account_holdings, eur_held):
+    def calculate_reward_sharpe_ratio(self,action, total_volume, cost_for_action):
         # Assuming you have methods to get the expected return and standard deviation of returns
         #TODO finish implementing the submethods for this method
         expected_return = self.get_expected_return()
@@ -340,7 +373,7 @@ class CustomEnv(gym.Env):
         risk_free_rate = 0.01
         
         sharpe_ratio = (expected_return - risk_free_rate) / (std_dev_returns + 1e-8)
-        reward = reward - self.cost_for_action(action)
+        reward = reward - cost_for_action
         
         return sharpe_ratio
     
@@ -371,58 +404,48 @@ class CustomEnv(gym.Env):
         
         return 0
 
-    def get_account_holdings(self):
-        account_holdings = []
-        for crypto in self.crypto_models:
-            try:
-                account = Account.objects.get(name=f'{crypto.symbol} Wallet')
-            except Account.DoesNotExist:
-                print(f'Account "{crypto.symbol} Wallet" does not exist')
-                continue
-            account_holdings.append(account.value)
-        return account_holdings
+    # def get_account_holdings(self):
+    #     account_holdings = []
+    #     for crypto in self.crypto_models:
+    #         try:
+    #             account = Account.objects.get(name=f'{crypto.symbol} Wallet')
+    #         except Account.DoesNotExist:
+    #             print(f'Account "{crypto.symbol} Wallet" does not exist')
+    #             continue
+    #         account_holdings.append(account.value)
+    #     return account_holdings
 
-    def get_crypto_data(self):
-        all_crypto_data = {}
-        for crypto in self.crypto_models:
-            crypto_data = crypto.objects.all()
-            all_crypto_data[crypto.symbol] = crypto_data
-        return all_crypto_data
+    # def get_crypto_data(self):
+    #     all_crypto_data = {}
+    #     for crypto in self.crypto_models:
+    #         crypto_data = crypto.objects.all()
+    #         all_crypto_data[crypto.symbol] = crypto_data
+    #     return all_crypto_data
     
-    def get_new_crypto_data(self):
-        all_entries = []
-        for crypto in self.crypto_models:
-            crypto_latest = crypto.objects.latest('timestamp')
-            all_entries = all_entries + self.crypto_to_list(crypto_latest)
-            all_entries = all_entries + self.get_new_prediction_data(crypto, crypto_latest.timestamp)
-        return all_entries
+    # def get_new_crypto_data(self):
+    #     all_entries = []
+    #     for crypto in self.crypto_models:
+    #         crypto_latest = crypto.objects.latest('timestamp')
+    #         all_entries = all_entries + self.crypto_to_list(crypto_latest)
+    #         all_entries = all_entries + self.get_new_prediction_data(crypto, crypto_latest.timestamp)
+    #     return all_entries
     
-    def get_new_prediction_data(self, crypto_model, timestamp):
-        all_entries = []
-        ml_models = ['LSTM', 'XGBoost']
-        prediction_shifts = [1,24,168]
-        for model in ml_models:
-            for prediction_shift in prediction_shifts:
-                try:
-                    entry = Prediction.objects.get(
-                        crypto=crypto_model.__name__,
-                        timestamp_predicted_for = timestamp, 
-                        model_name = model, 
-                        predicted_field = f'close_higher_shifted_{prediction_shift}h'
-                    )
-                    all_entries.append(entry.predicted_value)
-                except Prediction.DoesNotExist:
-                    print(f'Prediction {crypto_model.__name__}, {timestamp}, {model}, close_higher_shifted_{prediction_shift}h Does not exist')
-                    all_entries.append(0)
-        return all_entries
+    # def get_new_prediction_data(self, crypto_model, timestamp):
+    #     all_entries = []
+    #     ml_models = ['LSTM', 'XGBoost']
+    #     prediction_shifts = [1,24,168]
+    #     for model in ml_models:
+    #         for prediction_shift in prediction_shifts:
+    #             try:
+    #                 entry = Prediction.objects.get(
+    #                     crypto=crypto_model.__name__,
+    #                     timestamp_predicted_for = timestamp, 
+    #                     model_name = model, 
+    #                     predicted_field = f'close_higher_shifted_{prediction_shift}h'
+    #                 )
+    #                 all_entries.append(entry.predicted_value)
+    #             except Prediction.DoesNotExist:
+    #                 print(f'Prediction {crypto_model.__name__}, {timestamp}, {model}, close_higher_shifted_{prediction_shift}h Does not exist')
+    #                 all_entries.append(0)
+    #     return all_entries
     
-    def get_eur_held(self):
-        try:
-            eur = Account.objects.get(name='EUR Wallet')
-            return eur.value
-        except Account.DoesNotExist:
-            print('Eur Account does not exist?!?')
-            return 0
-
-# Example of how to create an instance of your custom environment
-# env = CustomEnv()

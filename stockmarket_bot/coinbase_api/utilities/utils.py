@@ -1,5 +1,7 @@
 import requests
 from django.http import JsonResponse
+
+from coinbase_api.enums import Database
 from ..cb_auth import Method
 from ..views.views import cb_auth, cb_list_accounts
 from ..models.models import AbstractOHLCV, Account, Bitcoin, CryptoMetadata, Ethereum, Polkadot
@@ -128,18 +130,18 @@ def cb_fetch_available_crypto():
         #! see https://docs.cloud.coinbase.com/exchange/docs/rest-pagination for more details
         break
 
-def initialize_default_cryptos(initial_volume=1000):
-    all_accounts = Account.objects.all()
+def initialize_default_cryptos(initial_volume=1000, database=Database.DEFAULT.value):
+    all_accounts = Account.objects.using(database).all()
     all_accounts.delete()
     cryptos = [Bitcoin, Ethereum, Polkadot]
     uuid='00000000-0000-0000-0000-000000000000'
     euro = Account(
-        name='EUR Wallet',
+        name='USDC Wallet',
         uuid=uuid,
-        currency='EUR',
+        currency='USDC',
         value=initial_volume,
     )
-    euro.save()
+    euro.save(using=database)
     for crypto in cryptos:
         crypto_account = Account(
             name=f'{crypto.symbol} Wallet',
@@ -147,21 +149,21 @@ def initialize_default_cryptos(initial_volume=1000):
             currency=crypto.symbol,
             value=0,
         )
-        crypto_account.save()
+        crypto_account.save(using=database)
 
-def calculate_total_volume():
+def calculate_total_volume(database=Database.DEFAULT.value, base_currency_name='USDC'):
     cryptos = crypto_models
     try:
-        eur = Account.objects.get(name='EUR Wallet')
+        base_currency = Account.objects.using(database).get(name=f'{base_currency_name} Wallet')
     except Account.DoesNotExist:
-        print('Euro does not exist')
+        print(f'{base_currency_name} does not exist')
         return
-    volume = eur.value
-    print(f'Euro value: {volume}')
+    volume = base_currency.value
+    print(f'{base_currency_name} value: {volume}')
     for crypto in cryptos:
-        latest_entry = crypto.objects.latest('timestamp')
+        latest_entry = crypto.objects.using(database).latest('timestamp')
         try:
-            crypt = Account.objects.get(name=f'{crypto.symbol} Wallet')
+            crypt = Account.objects.using(database).get(name=f'{crypto.symbol} Wallet')
         except Account.DoesNotExist:
             print(f'Could not find: {crypto.symbol} Wallet')
             return

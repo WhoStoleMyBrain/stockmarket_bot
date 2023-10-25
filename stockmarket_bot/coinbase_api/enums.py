@@ -39,3 +39,8 @@ class Database(Enum):
     DEFAULT = 'default'
     HISTORICAL = 'historical'
     SIMULATION = 'simulation'
+
+class Actions(Enum):
+    SELL = 0
+    HOLD = 1
+    BUY = 2
