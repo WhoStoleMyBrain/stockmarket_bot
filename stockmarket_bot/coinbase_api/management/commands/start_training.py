@@ -5,7 +5,7 @@ from coinbase_api.tasks import update_ohlcv_data
 from coinbase_api.utilities.utils import cb_fetch_available_crypto
 import os
 from stable_baselines3 import PPO
-from coinbase_api.ml_models.RL_decider_model import CustomEnv
+from coinbase_api.ml_models.RL_decider_model import CustomEnv, SimulationDataHandler
 
 class Command(BaseCommand):
     help = 'Traing the RL model for a number of iterations over the whole dataset'
@@ -28,16 +28,17 @@ class Command(BaseCommand):
         else:
             param = 2 # default value
         model_path = 'coinbase_api/ml_models/rl_model.pkl'
-        
+        data_handler = SimulationDataHandler()
         if os.path.exists(model_path):
             # Load the existing model
-            env = CustomEnv()
+            env = CustomEnv(data_handler=data_handler)
             model = PPO.load(model_path, env=env)
-            # env = model.get_env()
         else:
             # Create a new model
-            env = CustomEnv()
+            env = CustomEnv(data_handler=data_handler)
             model = PPO("MlpPolicy", env, verbose=1)
+        #? Model is loaded, now we need to set up for the training task.
+        #? Most Importantly, the environment itself cannot step, since the data are externally driven
         # update_ohlcv_data()
         # cb_fetch_available_crypto()
         # cb_fetch_available_crypto_dummy()
@@ -46,9 +47,9 @@ class Command(BaseCommand):
         
         action, _ = model.predict(obs, deterministic=True)
         print(f'Action trying to take: {action}')
-        
-        obs, reward, done, info = env.step(action)
-        print(f'reward: {reward}')
+        model.learn(total_timesteps=1)
+        # obs, reward, done, info = env.step(action)
+        # print(f'reward: {reward}')
         model.save(model_path)
 
         print(f'Action trying to take: {action}')

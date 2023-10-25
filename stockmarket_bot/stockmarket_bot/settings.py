@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/4.0/ref/settings/
 
 from pathlib import Path
 from celery.schedules import crontab
+from coinbase_api.enums import Database
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -80,7 +81,7 @@ WSGI_APPLICATION = 'stockmarket_bot.wsgi.application'
 # https://docs.djangoproject.com/en/4.0/ref/settings/#databases
 
 DATABASES = {
-    'default': {
+    Database.DEFAULT.value: {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': 'mydatabase',
         'USER': 'myuser',
@@ -88,14 +89,22 @@ DATABASES = {
         'HOST': 'db',  # Use the service name from docker-compose.yml
         'PORT': '5432',
     },
-    'historical': {
+    Database.SIMULATION.value: {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'simulation',
+        'USER': 'myuser',
+        'PASSWORD': 'mypassword',
+        'HOST': 'db',  # Use the service name from docker-compose.yml
+        'PORT': '5432',
+    },
+    Database.HISTORICAL.value: {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': 'historical_database',
         'USER': 'myuser',
         'PASSWORD': 'mypassword',
         'HOST': 'historical_db',  # Use the service name from docker-compose.yml
-        'PORT': '5433',  # This should match the exposed port in docker-compose.yml
-    }
+        'PORT': '5432',  # This should match the exposed port in docker-compose.yml
+    },
 }
 
 

@@ -1,7 +1,7 @@
 # serializers.py
 
 from rest_framework import serializers
-from .models.models import Account, Cryptocurrency, Bitcoin, Ethereum, Polkadot, Prediction
+from .models.models import Account, CryptoMetadata, Cryptocurrency, Bitcoin, Ethereum, Polkadot, Prediction
 
 class CryptocurrencySerializer(serializers.ModelSerializer):
     class Meta:
@@ -69,6 +69,11 @@ class AccountSerializer(serializers.ModelSerializer):
     class Meta:
         model = Account
         fields = ['name', 'uuid', 'currency', 'value']
+
+class CryptoMetadataSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CryptoMetadata
+        fields = ['symbol', 'earliest_date']
 
 # import numpy as np
 # from django.core.serializers.json import DjangoJSONEncoder

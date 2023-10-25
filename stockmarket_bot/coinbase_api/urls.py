@@ -17,6 +17,7 @@ from coinbase_api.views.views import (
 
 from coinbase_api.api_views.api_views import (
     BitcoinView,
+    CryptoMetadataView,
     CryptocurrencyViewSet,
     EthereumView,
     PolkadotView,
@@ -39,6 +40,7 @@ router.register(r'polkadot', PolkadotView)
 router.register(r'prediction', PredictionView)
 router.register(r'accounts', AccountViewSet)
 router.register(r'cryptocurrencies', CryptocurrencyViewSet, basename='cryptocurrency')
+router.register(r'crypto-metadata', CryptoMetadataView)
 # router.register(r'bitcoin-data', BitcoinData)
 
 urlpatterns = [

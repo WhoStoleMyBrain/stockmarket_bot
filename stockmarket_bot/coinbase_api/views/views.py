@@ -6,6 +6,7 @@ import datetime
 from ..cb_auth import CBAuth, Method, OrderStatus
 from ..models.models import Bitcoin, Prediction
 from django.shortcuts import render
+from ..enums import Method, OrderStatus
 
 cb_auth = CBAuth()
 cb_auth.set_credentials(API_KEY, API_SECRET)

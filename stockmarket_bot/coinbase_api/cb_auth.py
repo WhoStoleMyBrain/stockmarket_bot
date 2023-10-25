@@ -5,47 +5,21 @@ import json
 import time
 from urllib.parse import urlencode
 from typing import Union, Dict
-from enum import Enum
+import time
 
-class Side(Enum):
-    BUY = 1
-    SELL = 0
-
-class Method(Enum):
-    POST = "POST"
-    GET = "GET"
-
-class Granularities(Enum):
-    UNKNOWN_GRANULARITY = 'UNKNOWN_GRANULARITY'
-    ONE_MINUTE = 'ONE_MINUTE'
-    FIVE_MINUTE = 'FIVE_MINUTE'
-    FIFTEEN_MINUTE = 'FIFTEEN_MINUTE'
-    THIRTY_MINUTE = 'THIRTY_MINUTE'
-    ONE_HOUR = 'ONE_HOUR'
-    TWO_HOUR = 'TWO_HOUR'
-    SIX_HOUR = 'SIX_HOUR'
-    ONE_DAY = 'ONE_DAY'
-
-class OrderStatus(Enum):
-    OPEN = 'OPEN'
-    CANCELLED = 'CANCELLED'
-    EXPIRED = 'EXPIRED'
-
-class OrderType(Enum):
-    UNKNOWN_ORDER_TYPE = 'UNKOWN_ORDER_TYPE'
-    MARKET = 'MARKET'
-    LIMIT = 'LIMIT'
-    STOP = 'STOP'
-    STOP_LIMIT = 'STOP_LIMIT'
-
-class ProductType(Enum):
-    SPOT = 'SPOT'
-    FUTURE = 'FUTURE'
 
 class CBAuth:
     """
     Singleton class for Coinbase authentication.
     """
+
+    MAX_502_RETRIES = 3
+
+    ERROR_MAPPING = {
+        401: {"message": "Unauthorized. Please check your API key and secret.", "action": "raise"},
+        400: {"message": "Bad request. Went horribly wrong!", "action": "log"},
+        502: {"message": "Bad Gateway error!", "action": "retry"}
+    }
 
     _instance = None  # Class attribute to hold the singleton instance
 
@@ -115,31 +89,49 @@ class CBAuth:
         }
 
     def send_request(self, method, path, body_encoded, headers):
-        conn = http.client.HTTPSConnection("api.coinbase.com")
+        retries = 0
+        backoff_time = 1  # Initial backoff time in seconds
+
+        while retries <= self.MAX_502_RETRIES:
+            conn = http.client.HTTPSConnection("api.coinbase.com")
+
+            response_data, status_code = self._execute_request(conn, method, path, body_encoded, headers)
+            
+            if status_code in self.ERROR_MAPPING:
+                error_info = self.ERROR_MAPPING[status_code]
+                print(f"Error {status_code}: {error_info['message']}")
+                
+                if error_info["action"] == "raise":
+                    return {'errors': {error_info['message']}, 'status': status_code, 'data': response_data}
+                elif error_info["action"] == "log":
+                    return {'errors': {error_info['message']}, 'status': status_code, 'data': response_data}
+                elif error_info["action"] == "retry":
+                    retries += 1
+                    if retries > self.MAX_502_RETRIES:
+                        return {'errors': {f"{error_info['message']} After maximum retries"}, 'status': status_code, 'data': response_data}
+                    time.sleep(backoff_time)  # Waiting before the next retry
+                    backoff_time *= 2  # Double the backoff time for the next potential retry
+                    continue
+                
+            return response_data
+        
+    def _execute_request(self, conn, method, path, body_encoded, headers):
         try:
-            print(f'Requesting the following URL:\n{path}\nmethod: {method} \nheaders: {headers} \nbody_encoded: {body_encoded}')
             conn.request(method, path, body_encoded, headers)
             res = conn.getresponse()
             data = res.read()
 
-            if res.status == 401:
-                print("Error: Unauthorized. Please check your API key and secret.")
-                return None
+            # Handle 502 Bad Gateway error as a special case
+            if res.status == 502:
+                print("Received a 502 Bad Gateway response.")
+                return {'errors': {'message': 'Bad Gateway error!'}, 'status': 502, 'data': 'Bad Gateway error received'}, 502
             
-            if res.status == 400:
-                print("Error: Bad request. Went horribly wrong!")
-                print(f"res: {res}\ndata:{data}")
-                return None
-
-            response_data = json.loads(data.decode("utf-8"))
-            if 'error_details' in response_data and response_data['error_details'] == 'missing required scopes':
-                print(
-                    "Error: Missing Required Scopes. Please update your API Keys to include more permissions.")
-                return None
-
-            return response_data
-        except json.JSONDecodeError:
-            print("Error: Unable to decode JSON response. Raw response data:", data)
-            return None
+            # If unable to decode JSON response, handle as another special case.
+            try:
+                response_data = json.loads(data.decode("utf-8"))
+                return response_data, res.status
+            except json.JSONDecodeError:
+                print("Error: Unable to decode JSON response. Raw response data:", data)
+                return {'errors': {'message': 'Unable to decode JSON response.'}, 'status': 400, 'data': data.decode("utf-8")}, 400
         finally:
             conn.close()

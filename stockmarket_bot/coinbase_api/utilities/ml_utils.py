@@ -3,10 +3,14 @@ from datetime import datetime, timedelta, timezone
 from django.utils.timezone import make_aware
 import numpy as np
 import pandas as pd
+from coinbase_api.models.models import AbstractOHLCV
 import ta
 from django.db.models import Sum, F, FloatField, ExpressionWrapper
+from enums import Database
+from typing import Union, List
+from django.db.models import QuerySet
 
-def calculate_vmap(queryset):
+def calculate_vmap(queryset: Union[QuerySet, List[AbstractOHLCV]]):
     aggregated_data = queryset.aggregate(
         total_volume=Sum('volume'),
         total_value=Sum(
@@ -52,18 +56,18 @@ def check_nan(entry):
     '''
     return entry if not np.isnan(entry) else None
 
-def add_calculated_parameters(crypto_model):
+def add_calculated_parameters(crypto_model:AbstractOHLCV, database=Database.DEFAULT.value):
     sequence_length = 50
     rsi_length = 14
     bollinger_length = 20
-    all_data = crypto_model.objects.all()
+    all_data = crypto_model.objects.using(database).all()
     previous_item = None
     for item in all_data:
-        data_day_of_item = crypto_model.objects.filter(timestamp__gte=item.timestamp.replace(hour=0, minute=0, second=0), timestamp__lte=item.timestamp.replace(hour=23, minute=59, second=59)).order_by('-timestamp')
+        data_day_of_item = crypto_model.objects.using(database).filter(timestamp__gte=item.timestamp.replace(hour=0, minute=0, second=0), timestamp__lte=item.timestamp.replace(hour=23, minute=59, second=59)).order_by('-timestamp')
         # if data_today.count() != 0:
         hours_ago = make_aware(datetime.utcnow().replace(hour=0, minute=0, second=0) - timedelta(hours=168))
-        last_168_data = crypto_model.objects.filter(timestamp__gte=hours_ago).order_by('timestamp')
-        data_sequence_length = crypto_model.objects.filter(timestamp__lte=item.timestamp).order_by('-timestamp')[:sequence_length]
+        last_168_data = crypto_model.objects.using(database).filter(timestamp__gte=hours_ago).order_by('timestamp')
+        data_sequence_length = crypto_model.objects.using(database).filter(timestamp__lte=item.timestamp).order_by('-timestamp')[:sequence_length]
         close = list(data_sequence_length.values_list('close', flat=True))
         close.append(item.close)
         close = pd.Series(close)
@@ -96,30 +100,5 @@ def add_calculated_parameters(crypto_model):
         item.bollinger_high = check_nan(bollinger_high.iloc[-1])
         item.bollinger_low = check_nan(bollinger_low.iloc[-1])
         item.rsi = check_nan(rsi.iloc[-1])
-        item.save()
+        item.save(using=database)
         previous_item = item
-        # print(f'new_entry: {new_entry}')
-        # print(f'type of sma: {type(sma.iloc[-1])}')
-        # print(type(new_entry.sma))
-        # print(type(new_entry.ema))
-        # print(type(new_entry.macd))
-        # print(type(new_entry.bollinger_high))
-        # print(type(new_entry.bollinger_low))
-        # print(type(new_entry.rsi))
-        # if type(new_entry.sma) != np.float64:
-        #     print(f'sma: {new_entry.sma}')
-        # if type(new_entry.ema) != np.float64:
-        #     print(f'ema: {new_entry.ema}')
-        # if type(new_entry.macd) != np.float64:
-        #     print(f'macd: {new_entry.macd}')
-        # if type(new_entry.bollinger_high) != np.float64:
-        #     print(f'bollinger_high: {new_entry.bollinger_high}')
-        # if type(new_entry.bollinger_low) != np.float64:
-        #     print(f'bollinger_low: {new_entry.bollinger_low}')
-        # if type(new_entry.rsi) != np.float64:
-        #     print(f'rsi: {new_entry.rsi}')
-        # print(f'sma is none?: {sma.iloc[-1] == np.nan}')
-        # print(f'sma is none?: {sma.iloc[-1] == np.NAN}')
-        # print(f'sma is none?: {np.isnan(sma.iloc[-1])}')
-        # print(f'sma is "nan"?: {sma.iloc[-1] == "nan"}')
-        # break

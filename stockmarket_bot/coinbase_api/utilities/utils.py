@@ -2,7 +2,7 @@ import requests
 from django.http import JsonResponse
 from ..cb_auth import Method
 from ..views.views import cb_auth, cb_list_accounts
-from ..models.models import Account, Bitcoin, Ethereum, Polkadot
+from ..models.models import AbstractOHLCV, Account, Bitcoin, CryptoMetadata, Ethereum, Polkadot
 import json
 from constants import crypto_models
 
@@ -76,9 +76,16 @@ def cb_fetch_product_candles(product_id, start, end, granularity):
             'granularity': granularity,
         }
         data = cb_auth(Method.GET.value, f"/api/v3/brokerage/products/{product_id}/candles", '', params)
-    except requests.RequestException as e:
-        return JsonResponse({'error': str(e)}, status=500)
-    return JsonResponse(data)
+        # Check if 'errors' key exists in the response
+        if 'errors' in data:
+            # print(data['errors'])  # Logging the error for debugging purposes
+            return JsonResponse({'errors': data['errors']}, status=data.get('status', 500))
+        # If you reach here, it means the request was successful
+        return JsonResponse(data)
+    
+    except Exception as e:
+        # This will handle any other unforeseen exceptions
+        return JsonResponse({'errors': str(e)}, status=500)
 
 def cb_fetch_available_crypto():
     print('trying to fetch crypto...')
@@ -187,7 +194,7 @@ def update_ohlcv_data():
         for _ in range(int(chunks)):
             print(f'starting with chunk {_+1} of {int(chunks)}')
             tmp_end = start + timedelta(hours=300)
-            print(f'requesting data for {start.day}:{start.hour}-{tmp_end.day}:{tmp_end.hour}')
+            print(f'requesting data for {start.year}.{start.month}.{start.day}:{start.hour}-{tmp_end.year}.{tmp_end.month}.{tmp_end.day}:{tmp_end.hour}')
             data = cb_fetch_product_candles(f'{crypto.symbol}-USD', int(datetime.timestamp(start)), int(datetime.timestamp(tmp_end)), Granularities.ONE_HOUR.value)
             json_data = json.loads(data.content)
             store_data(crypto, json_data["candles"])
@@ -203,11 +210,11 @@ def update_ohlcv_data():
     # new_data = Bitcoin.objects.all()
     # chain(predict_with_lstm.s(new_data), predict_with_xgboost.s(new_data)).apply_async()
 
-def store_data(crypto_model, data):
+def store_data(crypto_model, data, database='default'):
     try:
         for item in data:
             timestamp, low, high, opening, close_base, volume = float(item["start"]), float(item["low"]), float(item["high"]), float(item["open"]), float(item["close"]), float(item["volume"])
-            new_entry = crypto_model.objects.create(
+            new_entry = crypto_model.objects.using(database).create(
                 timestamp=make_aware(datetime.utcfromtimestamp(int(timestamp))),
                 open=opening,
                 high=high,
@@ -225,17 +232,84 @@ def cb_find_earliest_data(product_id='BTC-USDC'):
     end = int(datetime.timestamp(datetime.now()))
     earliest_date = None
     i = 0
+    data = None
     while True:
         end = int(datetime.timestamp(datetime.now() - timedelta(days=300*i)))
         start = int(datetime.timestamp(datetime.now() - timedelta(days=300*(i+1))))
-        data = cb_fetch_product_candles(product_id, start, end, granularity)
-        tmp = json.loads(data.content)
+        try:
+            data = cb_fetch_product_candles(product_id, start, end, granularity)
+            tmp = json.loads(data.content)
+        except TypeError:
+            print(f'cb_find_earliest_data: data could not be serialized to json. Data: {data}')
+            break
         try:
             print(f'for {product_id} found the following data for idx {i}: {len(tmp["candles"])} \nLast timestamp was: {tmp["candles"][-1]["start"]}')
             earliest_date = int(tmp['candles'][-1]['start'])
         except (IndexError, KeyError) as error:
             print(f'Error trying to get the earliest date: {error}')
             break
+        data = None
         i+=1
 
     return earliest_date
+
+def fetch_hourly_data_for_crypto(crypto_model:AbstractOHLCV):
+    # symbol = crypto_model.symbol_to_storage(crypto_model.symbol)
+    
+    # Decide the starting point
+    try:
+        latest_data = crypto_model.objects.using('historical').latest('timestamp')
+        start = make_naive(latest_data.timestamp)
+    except crypto_model.DoesNotExist:
+        # If no data is found for this cryptocurrency, use the timestamp from the CryptoMetadata model
+        meta_data = CryptoMetadata.objects.using('historical').get(symbol=CryptoMetadata.symbol_to_storage(crypto_model.symbol))
+        start = make_naive(meta_data.earliest_date)
+
+    # start_time_unix = int(datetime.timestamp(start_time))
+    # end_time_unix = int(datetime.timestamp(datetime.now()))
+    end = last_full_hour(datetime.now())
+    delta = end - start
+    required_data_points = delta.total_seconds() / 3600
+    chunks = -(-required_data_points // 300)  # Calculate the number of chunks (ceiling division)
+    for _ in range(int(chunks)):
+        # Fetch hourly data
+        print(f'starting with chunk {_+1} of {int(chunks)}')
+        tmp_end = start + timedelta(hours=300)
+        print(f'requesting data for {start.year}.{start.month}.{start.day}:{start.hour}-{tmp_end.year}.{tmp_end.month}.{tmp_end.day}:{tmp_end.hour}')
+        data = cb_fetch_product_candles(f'{crypto_model.symbol}-USDC', int(datetime.timestamp(start)), int(datetime.timestamp(tmp_end)), Granularities.ONE_HOUR.value)
+        if 'errors' in json.loads(data.content):
+            print(f'Could not find data for chunk: {_+1}/{int(chunks)}!')
+            print('Aborting to keep database integrity intact!')
+            break
+        json_data = json.loads(data.content)
+        store_data(crypto_model, json_data["candles"], 'historical')
+        start += timedelta(hours=300)  # Move start ahead by 300 hours
+        print(f'finished with chunk {_+1} of {int(chunks)}')
+        
+    # add_calculated_parameters(crypto_model)
+
+
+def healthcheck_data(crypto_model):
+    missing_data = []
+
+    try:
+        earliest_data = crypto_model.objects.earliest('timestamp')
+        start_time = earliest_data.timestamp
+    except crypto_model.DoesNotExist:
+        # If no data is found for this cryptocurrency, use the timestamp from the CryptoMetadata model
+        meta_data = CryptoMetadata.objects.get(symbol=crypto_model.symbol)
+        start_time = meta_data.earliest_date
+
+    current_time = start_time
+    end_time = datetime.now()
+
+    while current_time <= end_time:
+        try:
+            crypto_model.objects.get(timestamp=current_time)
+        except crypto_model.DoesNotExist:
+            missing_data.append(current_time)
+
+        # Move to the next hour
+        current_time += timedelta(hours=1)
+
+    return missing_data

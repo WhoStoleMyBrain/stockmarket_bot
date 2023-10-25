@@ -2,6 +2,8 @@
 from datetime import datetime, timedelta
 from django.utils.timezone import make_aware, make_naive
 from django.apps import apps
+
+from coinbase_api.enums import Database
 from .models.models import AbstractOHLCV, Bitcoin, Ethereum, Polkadot, Prediction
 from .cb_auth import Granularities
 from .utilities.utils import cb_fetch_product_candles
@@ -68,23 +70,17 @@ def store_data(crypto_model, data):
         print(f'Encountered the following error: {e}')
 
 @app.task
-def predict_with_lstm(data, timestamp, crypto_model:AbstractOHLCV):
-    # ... logic to predict using LSTM model ...
-    print('start trying to predict with lstm...')
+def predict_with_lstm(data, timestamp, crypto_model:AbstractOHLCV, database=Database.DEFAULT.value):
+    print(f'start trying to predict with lstm on database: {database}...')
     lstm_model = apps.get_app_config('coinbase_api').lstm_model
-    # print(f'lstm_model: {lstm_model}')
-    # for name, param in lstm_model.named_parameters():
-    #     if param.requires_grad:
-    #         print(name, param.data)
-    # print(f'data: {data}')
     with no_grad():
         output = lstm_model(data)
         probs = output.tolist()
-    print(f'probs: {probs}')
+    # print(f'probs: {probs}')
     for idx, item in enumerate(probs[0]):
-        print(idx, item)
+        # print(idx, item)
         # save the prediction
-        Prediction.objects.create(
+        Prediction.objects.using(database).create(
             timestamp_predicted_for=timestamp,
             model_name='LSTM',
             predicted_field=f'close_higher_shifted_{1 if idx == 0 else 24 if idx==1 else 168}h',
@@ -94,9 +90,9 @@ def predict_with_lstm(data, timestamp, crypto_model:AbstractOHLCV):
 
 
 @app.task
-def predict_with_xgboost(data,timestamp, crypto_model:AbstractOHLCV):
+def predict_with_xgboost(data,timestamp, crypto_model:AbstractOHLCV, database=Database.DEFAULT.value):
     # ... logic to predict using XGBoost model ...
-    print('start trying to predict with xgboost...')
+    print(f'start trying to predict with xgboost on database: {database}...')
     app_config = apps.get_app_config('coinbase_api')
     xgboost_model1 = app_config.xgboost_model1
     xgboost_model24 = app_config.xgboost_model24
@@ -106,46 +102,28 @@ def predict_with_xgboost(data,timestamp, crypto_model:AbstractOHLCV):
     y_pred_168 = xgboost_model168.predict(data)
     # print(f'len data: {data.num_row()}')
     # print(f'data: {data}')
-    print(f'y_pred_1: {len(y_pred_1)}')
-    print(f'y_pred_24: {len(y_pred_24)}')
-    print(f'y_pred_168: {len(y_pred_168)}')
+    # print(f'y_pred_1: {len(y_pred_1)}')
+    # print(f'y_pred_24: {len(y_pred_24)}')
+    # print(f'y_pred_168: {len(y_pred_168)}')
     # save the prediction
-    Prediction.objects.create(
+    Prediction.objects.using(database).create(
         timestamp_predicted_for=timestamp,
         model_name='XGBoost',
         predicted_field='close_higher_shifted_1h',
         crypto = crypto_model.__name__,
         predicted_value=y_pred_1
     )
-    Prediction.objects.create(
+    Prediction.objects.using(database).create(
         timestamp_predicted_for=timestamp,
         model_name='XGBoost',
         predicted_field='close_higher_shifted_24h',
         crypto = crypto_model.__name__,
         predicted_value=y_pred_24
     )
-    Prediction.objects.create(
+    Prediction.objects.using(database).create(
         timestamp_predicted_for=timestamp,
         model_name='XGBoost',
         predicted_field='close_higher_shifted_168h',
         crypto = crypto_model.__name__,
         predicted_value=y_pred_168
     )
-
-
-# SELECT * FROM coinbase_api_bitcoin
-# WHERE 
-#     open = 'nan' OR
-#     high = 'nan' OR
-#     low = 'nan' OR
-#     close = 'nan' OR
-#     volume = 'nan' OR
-#     sma = 'nan' OR
-#     ema = 'nan' OR
-#     rsi = 'nan' OR
-#     macd = 'nan' OR
-#     bollinger_high = 'nan' OR
-#     bollinger_low = 'nan' OR
-#     vmap = 'nan' OR
-#     percentage_returns = 'nan' OR
-#     log_returns = 'nan';

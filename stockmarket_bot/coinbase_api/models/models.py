@@ -19,6 +19,9 @@ class Cryptocurrency(models.Model):
         ]
 
 class AbstractOHLCV(models.Model):
+    symbol = "AAA"
+    def __str__(self) -> str:
+        return self.symbol
     timestamp = models.DateTimeField(db_index=True)
     open = models.FloatField(null=True)
     high = models.FloatField(null=True, db_index=True)  # Assuming high/low might be queried often
@@ -139,3 +142,11 @@ class CryptoMetadata(models.Model):
 
     def __str__(self):
         return self.symbol
+
+    @staticmethod
+    def symbol_to_storage(symbol):
+        return f'{symbol}-USDC'
+    
+    @staticmethod
+    def stored_symbol_to_model(model_entry):
+        return model_entry.symbol.split('-')[0]
