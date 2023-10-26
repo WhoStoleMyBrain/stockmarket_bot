@@ -1,7 +1,7 @@
 # base_app/management/commands/setup_periodic_task.py
 from django.core.management.base import BaseCommand
 from coinbase_api.utilities.utils import cb_find_earliest_data
-from constants import crypto_models
+from coinbase_api.constants import crypto_models
 from datetime import datetime
 from django.utils.timezone import make_aware, make_naive
 
@@ -17,7 +17,7 @@ class Command(BaseCommand):
             earliest_date_timestamp = cb_find_earliest_data(f'{model.symbol}-USDC')
             print(f'earliest_date_timestamp: {earliest_date_timestamp}')
             if earliest_date_timestamp is not None:
-                earliest_date = make_aware(datetime.fromtimestamp(earliest_date_timestamp))
+                earliest_date = datetime.fromtimestamp(earliest_date_timestamp)
                 # Either create a new record or update the existing one
                 print(CryptoMetadata.symbol_to_storage(model.symbol))
                 try:

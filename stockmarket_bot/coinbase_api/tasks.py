@@ -5,7 +5,8 @@ from django.apps import apps
 
 from coinbase_api.enums import Database
 from .models.models import AbstractOHLCV, Bitcoin, Ethereum, Polkadot, Prediction
-from .cb_auth import Granularities
+# from .cb_auth import Granularities
+from .enums import Granularities
 from .utilities.utils import cb_fetch_product_candles
 from .utilities.ml_utils import add_calculated_parameters
 from stockmarket_bot.celery import app
@@ -71,7 +72,7 @@ def store_data(crypto_model, data):
 
 @app.task
 def predict_with_lstm(data, timestamp, crypto_model:AbstractOHLCV, database=Database.DEFAULT.value):
-    print(f'start trying to predict with lstm on database: {database}...')
+    # print(f'start trying to predict with lstm on database: {database}...')
     lstm_model = apps.get_app_config('coinbase_api').lstm_model
     with no_grad():
         output = lstm_model(data)
@@ -92,7 +93,7 @@ def predict_with_lstm(data, timestamp, crypto_model:AbstractOHLCV, database=Data
 @app.task
 def predict_with_xgboost(data,timestamp, crypto_model:AbstractOHLCV, database=Database.DEFAULT.value):
     # ... logic to predict using XGBoost model ...
-    print(f'start trying to predict with xgboost on database: {database}...')
+    # print(f'start trying to predict with xgboost on database: {database}...')
     app_config = apps.get_app_config('coinbase_api')
     xgboost_model1 = app_config.xgboost_model1
     xgboost_model24 = app_config.xgboost_model24

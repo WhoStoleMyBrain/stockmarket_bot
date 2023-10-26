@@ -6,7 +6,7 @@ import pandas as pd
 from coinbase_api.models.models import AbstractOHLCV
 import ta
 from django.db.models import Sum, F, FloatField, ExpressionWrapper
-from enums import Database
+from ..enums import Database
 from typing import Union, List
 from django.db.models import QuerySet
 
@@ -37,7 +37,7 @@ def calculate_percentage_returns(current_item, previous_item):
 def calculate_log_returns(current_item, previous_item):
     if previous_item is None:
         return None
-    if abs(current_item.close - previous_item.close) < 0.000001:
+    if abs(current_item.close - previous_item.close) < 1e-15:
         return None
     else:
         # print(f'current item: {current_item.close}, previous_item: {previous_item.close}')
@@ -62,7 +62,17 @@ def add_calculated_parameters(crypto_model:AbstractOHLCV, database=Database.DEFA
     bollinger_length = 20
     all_data = crypto_model.objects.using(database).all()
     previous_item = None
+    idx = 0
+    length = len(all_data)
+    #TODO add method to ONLY calculate for entries where any field value is none/null
     for item in all_data:
+        idx += 1
+        if idx%100==0:
+            print(f'processing item {idx}/{length}')
+        if item.all_fields_set():
+            # print(f'skipping item {idx}/{length} since all values are already set')
+            continue
+        print(f'ACTUALLY processing item {idx}/{length}')
         data_day_of_item = crypto_model.objects.using(database).filter(timestamp__gte=item.timestamp.replace(hour=0, minute=0, second=0), timestamp__lte=item.timestamp.replace(hour=23, minute=59, second=59)).order_by('-timestamp')
         # if data_today.count() != 0:
         hours_ago = make_aware(datetime.utcnow().replace(hour=0, minute=0, second=0) - timedelta(hours=168))

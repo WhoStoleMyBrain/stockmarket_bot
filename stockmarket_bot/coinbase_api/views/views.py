@@ -1,9 +1,9 @@
 import requests
 from django.http import JsonResponse
 from coinbase.wallet.client import Client
-from constants import API_KEY, API_SECRET, crypto_models
+from coinbase_api.constants import API_KEY, API_SECRET, crypto_models
 import datetime
-from ..cb_auth import CBAuth, Method, OrderStatus
+from ..cb_auth import CBAuth
 from ..models.models import Bitcoin, Prediction
 from django.shortcuts import render
 from ..enums import Method, OrderStatus

@@ -16,10 +16,14 @@ from coinbase_api.views.views import (
     )
 
 from coinbase_api.api_views.api_views import (
+    BitcoinIncompleteView,
     BitcoinView,
     CryptoMetadataView,
     CryptocurrencyViewSet,
+    EthereumIncompleteView,
     EthereumView,
+    PolkadotHistoricalView,
+    PolkadotIncompleteView,
     PolkadotView,
     PredictionView,
     BitcoinData,
@@ -37,10 +41,14 @@ router = DefaultRouter()
 router.register(r'bitcoin', BitcoinView)
 router.register(r'ethereum', EthereumView)
 router.register(r'polkadot', PolkadotView)
+router.register(r'polkadothistorical', PolkadotHistoricalView)
 router.register(r'prediction', PredictionView)
 router.register(r'accounts', AccountViewSet)
 router.register(r'cryptocurrencies', CryptocurrencyViewSet, basename='cryptocurrency')
 router.register(r'crypto-metadata', CryptoMetadataView)
+# router.register(r'incomplete_bitcoin', BitcoinIncompleteView, basename='def1')
+# router.register(r'incomplete_ethereum', EthereumIncompleteView, basename='def2')
+# router.register(r'incomplete_polkadot', PolkadotIncompleteView, basename='def3')
 # router.register(r'bitcoin-data', BitcoinData)
 
 urlpatterns = [
@@ -61,6 +69,9 @@ urlpatterns = [
     path('cb-get-market-trades/', cb_get_market_trades, name='cb_get_market_trades'),
     path('cb-list-orders/', cb_list_orders, name='cb_list_orders'),
     path('bitcoins/chart/', bitcoin_chart, name='bitcoin-chart'),
+    path('api/incomplete_bitcoin/', BitcoinIncompleteView.as_view()),
+    path('api/incomplete_ethereum/', EthereumIncompleteView.as_view()),
+    path('api/incomplete_polkadot/', PolkadotIncompleteView.as_view()),
     path('api/bitcoin/', BitcoinData.as_view(), name='bitcoin-data'),
     path('api/', include(router.urls)),
 ]

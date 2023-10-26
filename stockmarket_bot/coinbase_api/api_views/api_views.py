@@ -6,8 +6,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.decorators import api_view
 from coinbase_api.serializers import AccountSerializer, CryptoMetadataSerializer, CryptocurrencySerializer, BitcoinSerializer, EthereumSerializer, PolkadotSerializer, PredictionSerializer, BitcoinViewSerializer
-from ..cb_auth import Granularities
-from rest_framework import viewsets, filters
+from rest_framework import viewsets, filters, generics
 # from rest_framework.renderers import JSONRenderer
 # from rest_framework.views import APIView
 from django_filters import rest_framework as django_filters
@@ -17,7 +16,7 @@ from ..views.views import cb_fetch_product
 from rest_framework.views import APIView
 import datetime
 from django.utils import timezone
-from ..enums import Granularities
+from ..enums import Database, Granularities
 
 
 
@@ -147,6 +146,10 @@ class PolkadotView(AbstractOHLCVView):
     queryset = Polkadot.objects.all()
     serializer_class = PolkadotSerializer
 
+class PolkadotHistoricalView(AbstractOHLCVView):
+    queryset = Polkadot.objects.using(Database.HISTORICAL.value).all()
+    serializer_class = PolkadotSerializer
+
 class PredictionFilter(django_filters.FilterSet):
     timestamp_predicted_for = django_filters.DateTimeFromToRangeFilter()
     timestamp_predicted_at = django_filters.DateTimeFromToRangeFilter()
@@ -210,3 +213,42 @@ class CryptoMetadataView(viewsets.ReadOnlyModelViewSet):
     filter_backends = (django_filters.DjangoFilterBackend, filters.OrderingFilter)
     filterset_class = CryptoMetadataFilter
     ordering_fields = '__all__'
+
+
+
+class BitcoinIncompleteView(generics.ListAPIView):
+    serializer_class = BitcoinSerializer
+
+    def get_queryset(self):
+        # Get all objects from the Bitcoin model
+        all_objects = Bitcoin.objects.using(Database.HISTORICAL.value).all()
+        
+        # Filter objects where all_fields_set returns False
+        incomplete_objects = [obj for obj in all_objects if not obj.all_fields_set()]
+        
+        return incomplete_objects
+    
+class EthereumIncompleteView(generics.ListAPIView):
+    serializer_class = EthereumSerializer
+
+    def get_queryset(self):
+        # Get all objects from the Bitcoin model
+        all_objects = Ethereum.objects.using(Database.HISTORICAL.value).all()
+        
+        # Filter objects where all_fields_set returns False
+        incomplete_objects = [obj for obj in all_objects if not obj.all_fields_set()]
+        
+        return incomplete_objects
+    
+class PolkadotIncompleteView(generics.ListAPIView):
+    serializer_class = PolkadotSerializer
+    # queryset = get_queryset()
+
+    def get_queryset(self):
+        # Get all objects from the Bitcoin model
+        all_objects = Polkadot.objects.using(Database.HISTORICAL.value).all()
+        
+        # Filter objects where all_fields_set returns False
+        incomplete_objects = [obj for obj in all_objects if not obj.all_fields_set()]
+        
+        return incomplete_objects

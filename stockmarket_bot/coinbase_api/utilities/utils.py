@@ -2,16 +2,15 @@ import requests
 from django.http import JsonResponse
 
 from coinbase_api.enums import Database
-from ..cb_auth import Method
 from ..views.views import cb_auth, cb_list_accounts
 from ..models.models import AbstractOHLCV, Account, Bitcoin, CryptoMetadata, Ethereum, Polkadot
 import json
-from constants import crypto_models
+from ..constants import crypto_models
 
 from datetime import datetime, timedelta
-from django.utils.timezone import make_aware, make_naive
+# from django.utils.timezone import make_aware, make_naive
 # from django.apps import apps
-from ..cb_auth import Granularities
+from ..enums import Method, Granularities
 # from .utilities.utils import cb_fetch_product_candles
 from .ml_utils import add_calculated_parameters
 import json
@@ -133,15 +132,15 @@ def cb_fetch_available_crypto():
 def initialize_default_cryptos(initial_volume=1000, database=Database.DEFAULT.value):
     all_accounts = Account.objects.using(database).all()
     all_accounts.delete()
-    cryptos = [Bitcoin, Ethereum, Polkadot]
+    cryptos = crypto_models
     uuid='00000000-0000-0000-0000-000000000000'
-    euro = Account(
+    usdc = Account(
         name='USDC Wallet',
         uuid=uuid,
         currency='USDC',
         value=initial_volume,
     )
-    euro.save(using=database)
+    usdc.save(using=database)
     for crypto in cryptos:
         crypto_account = Account(
             name=f'{crypto.symbol} Wallet',
@@ -159,14 +158,18 @@ def calculate_total_volume(database=Database.DEFAULT.value, base_currency_name='
         print(f'{base_currency_name} does not exist')
         return
     volume = base_currency.value
-    print(f'{base_currency_name} value: {volume}')
+    # print(f'{base_currency_name} value: {volume}')
     for crypto in cryptos:
-        latest_entry = crypto.objects.using(database).latest('timestamp')
+        try:
+            latest_entry = crypto.objects.using(database).latest('timestamp')
+        except crypto.DoesNotExist:
+            print(f'Could not find: {crypto.symbol} data')
+            continue
         try:
             crypt = Account.objects.using(database).get(name=f'{crypto.symbol} Wallet')
         except Account.DoesNotExist:
             print(f'Could not find: {crypto.symbol} Wallet')
-            return
+            continue
         volume += crypt.value * latest_entry.close
     return volume
 
@@ -188,7 +191,7 @@ def update_ohlcv_data():
 
         latest_entry = crypto.objects.order_by('-timestamp').first()
         # start = latest_entry.timestamp if latest_entry else last_full_hour(datetime.utcnow()) - timedelta(days=30)
-        start = make_naive(latest_entry.timestamp) if latest_entry else last_full_hour(datetime.now()) - timedelta(days=30)
+        start = latest_entry.timestamp if latest_entry else last_full_hour(datetime.now()) - timedelta(days=30)
         end = last_full_hour(datetime.now())
         delta = end - start
         required_data_points = delta.total_seconds() / granularity
@@ -205,7 +208,7 @@ def update_ohlcv_data():
 
         # Deleting data older than a month
         add_calculated_parameters(crypto)
-        month_ago = make_aware(datetime.utcnow() - timedelta(days=30))
+        month_ago = datetime.utcnow() - timedelta(days=30)
         crypto.objects.filter(timestamp__lt=month_ago).delete()
         print(f'Finished with crypto: {crypto.__name__}, {crypto._meta.model_name}')
     #! need to update new_data to fetch subset of data and also fetch all crypto data types
@@ -217,7 +220,7 @@ def store_data(crypto_model, data, database='default'):
         for item in data:
             timestamp, low, high, opening, close_base, volume = float(item["start"]), float(item["low"]), float(item["high"]), float(item["open"]), float(item["close"]), float(item["volume"])
             new_entry = crypto_model.objects.using(database).create(
-                timestamp=make_aware(datetime.utcfromtimestamp(int(timestamp))),
+                timestamp=datetime.utcfromtimestamp(int(timestamp)),
                 open=opening,
                 high=high,
                 low=low,
@@ -260,12 +263,12 @@ def fetch_hourly_data_for_crypto(crypto_model:AbstractOHLCV):
     
     # Decide the starting point
     try:
-        latest_data = crypto_model.objects.using('historical').latest('timestamp')
-        start = make_naive(latest_data.timestamp)
+        latest_data = crypto_model.objects.using(Database.HISTORICAL.value).latest('timestamp')
+        start = latest_data.timestamp
     except crypto_model.DoesNotExist:
         # If no data is found for this cryptocurrency, use the timestamp from the CryptoMetadata model
-        meta_data = CryptoMetadata.objects.using('historical').get(symbol=CryptoMetadata.symbol_to_storage(crypto_model.symbol))
-        start = make_naive(meta_data.earliest_date)
+        meta_data = CryptoMetadata.objects.using(Database.HISTORICAL.value).get(symbol=CryptoMetadata.symbol_to_storage(crypto_model.symbol))
+        start = meta_data.earliest_date
 
     # start_time_unix = int(datetime.timestamp(start_time))
     # end_time_unix = int(datetime.timestamp(datetime.now()))
@@ -288,7 +291,7 @@ def fetch_hourly_data_for_crypto(crypto_model:AbstractOHLCV):
         start += timedelta(hours=300)  # Move start ahead by 300 hours
         print(f'finished with chunk {_+1} of {int(chunks)}')
         
-    # add_calculated_parameters(crypto_model)
+    add_calculated_parameters(crypto_model, database=Database.HISTORICAL.value)
 
 
 def healthcheck_data(crypto_model):

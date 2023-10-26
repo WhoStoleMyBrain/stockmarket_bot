@@ -11,30 +11,30 @@ class Command(BaseCommand):
     help = 'Trigger Database Update Task'
 
     def handle(self, *args, **kwargs):
-        model_path = 'coinbase_api/ml_models/rl_model.pkl'
+        # model_path = 'coinbase_api/ml_models/rl_model.pkl'
         
-        if os.path.exists(model_path):
-            # Load the existing model
-            env = CustomEnv()
-            model = PPO.load(model_path, env=env)
-            # env = model.get_env()
-        else:
-            # Create a new model
-            env = CustomEnv()
-            model = PPO("MlpPolicy", env, verbose=1)
+        # if os.path.exists(model_path):
+        #     # Load the existing model
+        #     env = CustomEnv()
+        #     model = PPO.load(model_path, env=env)
+        #     # env = model.get_env()
+        # else:
+        #     # Create a new model
+        #     env = CustomEnv()
+        #     model = PPO("MlpPolicy", env, verbose=1)
         update_ohlcv_data()
         # cb_fetch_available_crypto()
         # cb_fetch_available_crypto_dummy()
 
-        obs = env.reset()  # Reset the environment to get the initial observation
+        # obs = env.reset()  # Reset the environment to get the initial observation
         
-        action, _ = model.predict(obs, deterministic=True)
-        print(f'Action trying to take: {action}')
+        # action, _ = model.predict(obs, deterministic=True)
+        # print(f'Action trying to take: {action}')
         
-        obs, reward, done, info = env.step(action)
-        print(f'reward: {reward}')
-        model.save(model_path)
+        # obs, reward, done, info = env.step(action)
+        # print(f'reward: {reward}')
+        # model.save(model_path)
 
-        print(f'Action trying to take: {action}')
-        action, _ = model.predict(obs, deterministic=True)
+        # print(f'Action trying to take: {action}')
+        # action, _ = model.predict(obs, deterministic=True)
         # model.learn(total_timesteps=1000)

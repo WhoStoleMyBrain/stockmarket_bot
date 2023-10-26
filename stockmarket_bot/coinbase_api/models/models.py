@@ -41,6 +41,8 @@ class AbstractOHLCV(models.Model):
     close_higher_shifted_24h = models.BooleanField(null=True)
     close_higher_shifted_168h = models.BooleanField(null=True)
 
+    
+
     class Meta:
         abstract = True
         indexes = [
@@ -50,11 +52,35 @@ class AbstractOHLCV(models.Model):
             # ... add more indexes as needed ...
         ]
 
+    def all_fields_set(self)->bool:
+        # print(f'check in all_fields_set. self: {self}')
+        if (
+            self.open is None or
+            self.high is None or
+            self.low is None or
+            self.close is None or
+            self.volume is None or
+            self.sma is None or
+            self.ema is None or
+            self.rsi is None or
+            self.macd is None or
+            self.bollinger_high is None or
+            self.bollinger_low is None or
+            self.percentage_returns is None or
+            self.log_returns is None or
+            self.close_higher_shifted_1h is None or
+            self.close_higher_shifted_24h is None or
+            self.close_higher_shifted_168h is None            
+        ):
+            return False
+        return True
+
     @staticmethod
     def queryset_to_lstm_dataframe(queryset, seq_length=100):
         features = ['volume', 'sma', 'ema', 'rsi', 'macd', 'bollinger_high', 'bollinger_low', 'vmap', 'percentage_returns', 'log_returns']
         # Convert the queryset to a list of dictionaries
         data_dict_list = queryset.values()
+        # print(f'data dict list: {len(data_dict_list)}')
         dataframe = pd.DataFrame.from_records(data_dict_list, index='timestamp')
         dataframe.drop(columns=['id'], inplace=True)
         dataframe = dataframe.fillna(0)

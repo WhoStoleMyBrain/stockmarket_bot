@@ -1,4 +1,4 @@
-from constants import crypto_models
+from ..constants import crypto_models
 from coinbase_api.tasks import predict_with_lstm, predict_with_xgboost
 from django.db.utils import IntegrityError
 from coinbase_api.enums import Database
@@ -13,18 +13,24 @@ class PredictionHandler:
         self.database = database
 
     def predict(self, *args, **kwargs):
-        print('starting predictions...')
+        # print('starting predictions...')
         for crypto_model in self.crypto_models:
+            # print(f'starting with model: {crypto_model.symbol}')
+            # print(f'self.timestamp: {self.timestamp}')
+
             if self.timestamp is None:
                 self.data = crypto_model.objects.using(self.database).all().order_by('-timestamp')[:self.lstm_sequence_length]
                 self.timestamp = self.data.first().timestamp
             else:
                 self.data = crypto_model.objects.using(self.database).filter(timestamp__lte=self.timestamp).order_by('-timestamp')[:self.lstm_sequence_length]
+                # tmp1 = crypto_model.objects.using(self.database).filter(timestamp__lte=self.timestamp).order_by('timestamp').first()
+                # tmp2 = crypto_model.objects.using(self.database).filter(timestamp__lte=self.timestamp).order_by('-timestamp').first()
+                # print(f'first entry: {tmp2.timestamp}, last entry: {tmp1.timestamp}')
             dataframe_lstm = crypto_model.queryset_to_lstm_dataframe(self.data)
             dataframe_xgboost = crypto_model.queryset_to_xgboost_dataframe(self.data[self.lstm_sequence_length-1:])
             self._try_predict(predict_with_lstm, 'lstm', {'data':dataframe_lstm,'timestamp':self.timestamp, 'crypto_model':crypto_model, 'database':self.database})
             self._try_predict(predict_with_xgboost, 'XGBoost', {'data':dataframe_xgboost,'timestamp':self.timestamp, 'crypto_model':crypto_model, 'database':self.database})
-        print('finished predictions...')
+        # print('finished predictions...')
 
     def _try_predict(self, method, ml_model, kwargs):
         try:
