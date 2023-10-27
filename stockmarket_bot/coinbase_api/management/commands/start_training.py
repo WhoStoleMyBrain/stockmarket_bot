@@ -32,12 +32,13 @@ class Command(BaseCommand):
         data_handler = SimulationDataHandler()
         if os.path.exists(model_path):
             # Load the existing model
+            print('Loaded model!')
             env = CustomEnv(data_handler=data_handler)
             model = PPO.load(model_path, env=env)
         else:
             # Create a new model
             env = CustomEnv(data_handler=data_handler)
-            model = PPO("MlpPolicy", env, verbose=0, n_steps=2048)
+            model = PPO("MlpPolicy", env, verbose=0, n_steps=1024)
         # env_checker.check_env(env)
         #? Model is loaded, now we need to set up for the training task.
         #? Most Importantly, the environment itself cannot step, since the data are externally driven
@@ -50,7 +51,7 @@ class Command(BaseCommand):
         # action, _ = model.predict(obs, deterministic=True)
         # print(f'Action trying to take: {action}')
         for _ in range(10):
-            model.learn(total_timesteps=param)
+            model.learn(total_timesteps=param, progress_bar=True)
         # obs, reward, done, info = env.step(action)
         # print(f'reward: {reward}')
         # obs, reward, done, truncated, info = env.step()

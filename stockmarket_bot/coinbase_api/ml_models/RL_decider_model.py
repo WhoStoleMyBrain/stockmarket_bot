@@ -45,28 +45,25 @@ class SimulationDataHandler(AbstractDataHandler):
         return np.array([total_volume, usdc_held] + account_holdings + new_crypto_data)
 
     def update_state(self, action):
-        #! need to perform action, i.e. calculate cost, update account holdings, 
-        #!      update crypto database, update predictions (make new ones), update liquidity 
         cost_for_action = self.cost_for_action(action)
-        # for efficiency get the indices in the beginning
         buy_indices = [idx for idx, i in enumerate(action) if i == Actions.SELL.value]
         sell_indices = [idx for idx, i in enumerate(action) if i == Actions.BUY.value]
+        # perform buy actions on DB
         if len(buy_indices) > 0:
             individual_liquidity = (self.get_liquidity() - cost_for_action)/len(buy_indices)
             for idx in buy_indices:
-                # buying... update account holding
                 crypto_model = self.crypto_models[idx]
                 try:
                     crypto_account = self.get_crypto_account(crypto_model.symbol)
                     usdc_account = self.get_crypto_account('USDC')
                 except Account.DoesNotExist:
                     continue
-                # get price
                 crypto_value = crypto_model.objects.using(self.database).latest('timestamp').close
                 crypto_account.value += individual_liquidity/crypto_value
                 crypto_account.save(using=self.database)
                 usdc_account.value = 0
                 usdc_account.save(using=self.database)
+        # perform sell actions on DB
         if len(sell_indices) > 0:
             for idx in sell_indices:
                     crypto_model = self.crypto_models[idx]
@@ -75,17 +72,15 @@ class SimulationDataHandler(AbstractDataHandler):
                         usdc_account = self.get_crypto_account('USDC')
                     except Account.DoesNotExist:
                         continue
-                    # get price
                     crypto_value = crypto_model.objects.using(self.database).latest('timestamp').close
                     total_value = crypto_value * crypto_account.value
                     usdc_account.value += total_value
                     usdc_account.save(using=self.database)
                     crypto_account.value = 0
                     crypto_account.save(using=self.database)
-        # fetching new crypto data
         new_timestamp = self.timestamp + timedelta(hours=1)
-        # print(f'Stepping from {self.timestamp} to {new_timestamp}')
         done = False
+        # fetching new crypto data
         for crypto in self.crypto_models:
             try:
                 historical_data = crypto.objects.using(Database.HISTORICAL.value).get(timestamp=new_timestamp)
@@ -129,8 +124,9 @@ class SimulationDataHandler(AbstractDataHandler):
     def cost_for_action(self, action):
         total_cost = 0
         for idx, crypto_action in enumerate(action):
+            if crypto_action == Actions.HOLD.value:
+                continue
             is_buy = True if crypto_action == Actions.BUY.value else False
-            # print(f'trying to buy {self.crypto_models[idx].__name__}? {is_buy}')
             crypto = self.crypto_models[idx]
             try:
                 transaction_volume = self.calculate_transaction_volume(crypto, is_buy)
@@ -156,9 +152,6 @@ class SimulationDataHandler(AbstractDataHandler):
 
     def get_crypto_predicted_features(self):
         return crypto_predicted_features
-    
-    def get_extra_features(self):
-        return crypto_extra_features
     
     def crypto_to_list(self, crypto: AbstractOHLCV):
         return [getattr(crypto, fieldname) for fieldname in self.get_crypto_features()]
@@ -268,7 +261,7 @@ class SimulationDataHandler(AbstractDataHandler):
         return all_entries
 
 class CustomEnv(gym.Env):
-    def __init__(self, data_handler:AbstractDataHandler, asymmetry_factor:float=2):
+    def __init__(self, data_handler:AbstractDataHandler, asymmetry_factor:float=1):
         print('Initializing env')
         super(CustomEnv, self).__init__()
         self.crypto_models = crypto_models
@@ -276,15 +269,13 @@ class CustomEnv(gym.Env):
         N = len(self.crypto_models)
         self.action_space = spaces.MultiDiscrete([3] * N)  # where N is the number of cryptocurrencies
         self.prev_total_volume = None
+        self.prev_reward = None
         self.asymmetry_factor = asymmetry_factor
         self.volume_timeframe= 24*3
         self.volume_values = [0]*self.volume_timeframe
-        # self.maker_fee = 0.004  # 0.4%
-        # self.taker_fee = 0.006  # 0.6%
-        self.features = self.get_crypto_features()
-        self.predicted_features = self.get_crypto_predicted_features()
-        self.extra_features = self.get_extra_features()
-        M = len(self.features) + len(self.predicted_features) + len(self.extra_features)
+        self.fading_coefficient = 0.75
+        self.volume_coefficient = 1.0
+        M = len(self.get_crypto_features()) + len(self.get_crypto_predicted_features()) + len(self.get_extra_features())
         shape_value = M*N + 2 #! +1 because of total volume held and USDC value held
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(shape_value,), dtype=np.float64)
 
@@ -294,36 +285,28 @@ class CustomEnv(gym.Env):
         total_volume = next_state[0]
         self.volume_values = self.volume_values[1:] + [total_volume]
         usdc_held = next_state[1]
-        reward_q = self.calculate_reward_quadratic(action, total_volume, cost_for_action)
+        reward_q = self.calculate_reward_volume_normalized(action, total_volume, cost_for_action)
+        # reward_q = self.calculate_reward_quadratic(action, total_volume, cost_for_action)
         self.prev_total_volume = total_volume
-        # print(f'next_state: {next_state}')
+        self.prev_reward = reward_q
         truncated = False
         print(f'current volume: {total_volume}, usdc: {usdc_held}, reward {reward_q}, cost: {cost_for_action}')
-        
         return next_state, reward_q, terminated, truncated, info
 
     def reset(self, seed=None, options=None):
-        # print(f'received additional params on reset: seed={seed}, options={options}')
         self.crypto_models = crypto_models
         self.prev_total_volume = None
+        self.prev_reward = None
         self.volume_timeframe= 24*3
         self.volume_values = [0]*self.volume_timeframe
-        self.features =self.get_crypto_features()
-        self.predicted_features = self.get_crypto_predicted_features()
-        self.extra_features = self.get_extra_features()
         initial_state = self.data_handler.reset_state()
         info = {}
         return initial_state, info
 
     def render(self, mode='human'):
-        print('trying to render...')
-        # Render the environment to the screen or other output
-        # Optional: Implement rendering if needed
         pass
 
     def close(self):
-        print('trying to close...')
-        # Optional: Implement close if any cleanup is needed when the environment is closed
         pass
 
     def get_crypto_features(self):
@@ -338,14 +321,12 @@ class CustomEnv(gym.Env):
     def calculate_reward_quadratic(self, action, total_volume, cost_for_action):
         #todo redo quadratic, made linear for now
         if self.prev_total_volume is None:
-            # This is the first step, so there's no previous volume to compare to
             return 0
-
         volume_diff = total_volume - self.prev_total_volume
         if volume_diff > 0:
             reward = volume_diff
         else:
-            reward = -self.asymmetry_factor * (volume_diff)  # Negative to indicate a punishment
+            reward = -self.asymmetry_factor * (volume_diff)
         reward = reward - cost_for_action
         return reward
     
@@ -361,33 +342,27 @@ class CustomEnv(gym.Env):
         return reward
     
     def calculate_reward_volume_normalized(self, action, total_volume, cost_for_action):
-        if self.prev_total_volume is None:
+        if self.prev_total_volume is None or self.prev_reward is None:
             return 0
         volume_diff = total_volume - self.prev_total_volume
-        # Assuming you have a method to get the standard deviation of past volume changes
-        # need to fetch values for exp std_dev
-        # values = 
         std_dev = self.exponential_moving_std_dev()  
         normalized_diff = volume_diff / (std_dev + 1e-8)  # Adding a small value to avoid division by zero
         if normalized_diff > 0:
-            reward = normalized_diff ** 2
+            reward = normalized_diff
         else:
-            reward = -self.asymmetry_factor * (normalized_diff ** 2)
-            reward = reward - cost_for_action
+            reward = -self.asymmetry_factor * (normalized_diff)
+        reward = reward + self.fading_coefficient*self.prev_reward + self.volume_coefficient*(np.log(total_volume / self.data_handler.initial_volume))
+        reward = reward - cost_for_action
+        reward = reward*(1-self.fading_coefficient+0.01)*2.5
         return reward
     
     def calculate_reward_sharpe_ratio(self,action, total_volume, cost_for_action):
-        # Assuming you have methods to get the expected return and standard deviation of returns
         #TODO finish implementing the submethods for this method
         expected_return = self.get_expected_return()
         std_dev_returns = self.get_std_dev_returns()
-        
-        # Assuming a constant risk-free rate
         risk_free_rate = 0.01
-        
         sharpe_ratio = (expected_return - risk_free_rate) / (std_dev_returns + 1e-8)
         reward = reward - cost_for_action
-        
         return sharpe_ratio
     
     def calculate_ema(self, values, window):
@@ -400,30 +375,17 @@ class CustomEnv(gym.Env):
     
     def exponential_moving_std_dev(self):
         ema = self.calculate_ema(self.volume_values, self.volume_timeframe)
-        # squared_diff = (self.data['volume'] - ema) ** 2
-        
-        # emsd = np.sqrt(squared_diff.ewm(span=self.volume_timeframe).mean())
-        
-        # return emsd.iloc[-1]  # Return the most recent EMSD value
         squared_diff = [(val - ema[i]) ** 2 for i, val in enumerate(self.volume_values)]
-        
         emsd_values = self.calculate_ema(squared_diff, self.volume_timeframe)
-        
         return emsd_values[-1] ** 0.5  # Square root of the most recent EMSD value
     
     def get_expected_return(self):
         #TODO implement this method
-        # This is a simplified example. Replace with your method of calculating expected return.
-        # Assume daily returns are stored in a column called 'daily_return'
         # expected_return = self.data['daily_return'].mean()
-        
         return 0
     
     def get_std_dev_returns(self):
         #TODO implement this method
-        # This is a simplified example. Replace with your method of calculating standard deviation of returns.
-        # std_dev_returns = self.data['daily_return'].std()
-        
         return 0
 
     
