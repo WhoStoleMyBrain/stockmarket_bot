@@ -5,8 +5,10 @@ from coinbase_api.constants import API_KEY, API_SECRET, crypto_models
 import datetime
 from ..cb_auth import CBAuth
 from ..models.models import Bitcoin, Prediction
-from django.shortcuts import render
 from ..enums import Method, OrderStatus
+from django.shortcuts import render
+from django.http import HttpResponse
+from django.core.management import call_command
 
 cb_auth = CBAuth()
 cb_auth.set_credentials(API_KEY, API_SECRET)
@@ -310,3 +312,16 @@ def access_prediction_data(request):
 
 def bitcoin_chart(request):
     return render(request, 'chart.html')
+
+def command_buttons(request):
+    status_message = None
+    if request.method == 'POST':
+        command_name = request.POST.get('command')
+        try:
+            call_command(command_name)
+            status_message = f'Successfully ran {command_name}'
+        except Exception as e:
+            status_message = f'Error: {str(e)}'
+        
+    commands = ['check_if_all_data_present', 'find_earliest_timestamps', 'initialize_db', 'predict_with_data', 'start_training', 'trigger_db_update_task', 'trigger_historical_db_update_task']  # List your custom commands here
+    return render(request, 'command_buttons.html', {'commands': commands, 'status_message': status_message})

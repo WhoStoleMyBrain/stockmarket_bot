@@ -15,6 +15,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **kwargs):
         param = kwargs.get('value', None)
+        print(f'starting db setup task. param: {param}')
         if param is not None:
             try:
                 param = int(param)

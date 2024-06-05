@@ -13,6 +13,7 @@ from coinbase_api.views.views import (
     cb_get_market_trades,
     cb_list_accounts,
     bitcoin_chart,
+    command_buttons,
     )
 
 from coinbase_api.api_views.api_views import (
@@ -74,4 +75,5 @@ urlpatterns = [
     path('api/incomplete_polkadot/', PolkadotIncompleteView.as_view()),
     path('api/bitcoin/', BitcoinData.as_view(), name='bitcoin-data'),
     path('api/', include(router.urls)),
+    path('commands/', command_buttons, name='command_buttons'),
 ]

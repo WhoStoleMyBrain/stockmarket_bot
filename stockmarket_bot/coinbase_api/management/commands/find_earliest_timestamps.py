@@ -13,6 +13,7 @@ class Command(BaseCommand):
     help = 'Find earliest timestamps for all crypto models'
 
     def handle(self, *args, **kwargs):
+        print('starting earliest timestamp')
         for model in crypto_models:
             earliest_date_timestamp = cb_find_earliest_data(f'{model.symbol}-USDC')
             print(f'earliest_date_timestamp: {earliest_date_timestamp}')

@@ -5,7 +5,8 @@ import json
 import time
 from urllib.parse import urlencode
 from typing import Union, Dict
-import time
+from coinbase.rest import RESTClient
+from coinbase import jwt_generator
 
 
 class CBAuth:
@@ -22,6 +23,8 @@ class CBAuth:
     }
 
     _instance = None  # Class attribute to hold the singleton instance
+
+    restClientInstance = RESTClient()
 
     def __new__(cls):
         """
@@ -40,6 +43,7 @@ class CBAuth:
         """
         self.key = None
         self.secret = None
+        self._restClientInstance = None
 
     def set_credentials(self, api_key, api_secret):
         """
@@ -49,6 +53,7 @@ class CBAuth:
         """
         self.key = api_key
         self.secret = api_secret
+        self.restClientInstance = RESTClient(api_key=self.key, api_secret=self.secret)
 
     def __call__(self, method: str, path: str, body: Union[Dict, str] = '', params: Dict[str, str] = None) -> Dict:
         """
@@ -61,8 +66,10 @@ class CBAuth:
         :return: Response from the Coinbase API as a dictionary
         """
         path = self.add_query_params(path, params)
-        body_encoded = self.prepare_body(body)
+        print(f'Unencoded body: {body}')
+        print(f'path: {path}')
         headers = self.create_headers(method, path, body)
+        body_encoded = self.prepare_body(body)
         return self.send_request(method, path, body_encoded, headers)
 
     def add_query_params(self, path, params):
@@ -76,16 +83,22 @@ class CBAuth:
 
     def create_headers(self, method, path, body):
         timestamp = str(int(time.time()))
-        message = timestamp + method.upper() + \
-            path.split('?')[0] + (json.dumps(body) if body else '')
-        signature = hmac.new(self.secret.encode(
-            'utf-8'), message.encode('utf-8'), digestmod=hashlib.sha256).hexdigest()
 
+        jwt_uri = jwt_generator.format_jwt_uri(method, path)
+        jwt_token = jwt_generator.build_rest_jwt(jwt_uri, self.key, self.secret)
+        # message = timestamp + method.upper() + \
+        #     path.split('?')[0] + (json.dumps(body) if body else '')
+        # signature = hmac.new(self.secret.encode(
+        #     'utf-8'), message.encode('utf-8'), digestmod=hashlib.sha256).hexdigest()
+        # accounts = self._restClientInstance.get_accounts()
+        # self._restClientInstance.get_candles()
+        # print(f'accounts: {accounts}')
         return {
             "Content-Type": "application/json",
-            "CB-ACCESS-KEY": self.key,
-            "CB-ACCESS-SIGN": signature,
-            "CB-ACCESS-TIMESTAMP": timestamp
+            # "CB-ACCESS-KEY": self.key,
+            # "CB-ACCESS-SIGN": signature,
+            "CB-ACCESS-TIMESTAMP": timestamp,
+            "Authorization": f"Bearer {jwt_token}"
         }
 
     def send_request(self, method, path, body_encoded, headers):
@@ -93,8 +106,9 @@ class CBAuth:
         backoff_time = 1  # Initial backoff time in seconds
 
         while retries <= self.MAX_502_RETRIES:
+            
             conn = http.client.HTTPSConnection("api.coinbase.com")
-
+            print(f'before executing request headers: {headers}')
             response_data, status_code = self._execute_request(conn, method, path, body_encoded, headers)
             
             if status_code in self.ERROR_MAPPING:
@@ -115,7 +129,7 @@ class CBAuth:
                 
             return response_data
         
-    def _execute_request(self, conn, method, path, body_encoded, headers):
+    def _execute_request(self, conn: http.client.HTTPSConnection, method, path, body_encoded, headers):
         try:
             conn.request(method, path, body_encoded, headers)
             res = conn.getresponse()

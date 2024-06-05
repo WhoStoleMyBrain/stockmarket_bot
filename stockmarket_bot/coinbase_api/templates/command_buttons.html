@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Command Buttons</title>
+</head>
+<body>
+    <h1>Run Management Commands</h1>
+    <form method="post">
+        {% csrf_token %}
+        {% for command in commands %}
+            <button type="submit" name="command" value="{{ command }}">{{ command }}</button><br><br>
+        {% endfor %}
+    </form>
+    {% if status_message %}
+        <p>{{ status_message }}</p>
+    {% endif %}
+</body>
+</html>

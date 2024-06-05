@@ -76,8 +76,7 @@ def cb_fetch_product_candles(product_id, start, end, granularity):
             'end' : end,
             'granularity': granularity,
         }
-        data = cb_auth(Method.GET.value, f"/api/v3/brokerage/products/{product_id}/candles", '', params)
-        # Check if 'errors' key exists in the response
+        data = cb_auth.restClientInstance.get_candles(product_id=product_id, start=start, end=end, granularity=granularity)
         if 'errors' in data:
             # print(data['errors'])  # Logging the error for debugging purposes
             return JsonResponse({'errors': data['errors']}, status=data.get('status', 500))
@@ -244,6 +243,7 @@ def cb_find_earliest_data(product_id='BTC-USDC'):
         try:
             data = cb_fetch_product_candles(product_id, start, end, granularity)
             tmp = json.loads(data.content)
+            print(f'loaded data: {tmp}')
         except TypeError:
             print(f'cb_find_earliest_data: data could not be serialized to json. Data: {data}')
             break
