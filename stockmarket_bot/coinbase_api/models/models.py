@@ -41,6 +41,8 @@ class AbstractOHLCV(models.Model):
     close_higher_shifted_24h = models.BooleanField(null=True)
     close_higher_shifted_168h = models.BooleanField(null=True)
 
+    # timestamp, open, high, low, 
+
     
 
     class Meta:
@@ -117,8 +119,15 @@ class AbstractOHLCV(models.Model):
         dataframe['Is_Weekend'] = (dataframe['Day_of_Week'] >= 5).astype(int)  # 1 for weekend, 0 for weekdays
         # Updating the features list
         features_extended = features + ['Hour', 'Day_of_Week', 'Day_of_Month', 'Month', 'Year', 'Is_Weekend']
+        # features_extended = ['volume', 'sma', 'ema', 'rsi', 'macd', 'bollinger_high', 'bollinger_low', 'vmap', 'percentage_returns', 'log_returns', 'Hour', 'Day_of_Week', 'Day_of_Month', 'Month', 'Year', 'Is_Weekend']
         drop_features = ['macd', 'sma', 'Day_of_Week', 'Day_of_Month', 'Hour', 'log_returns', 'Is_Weekend']
+        # drop_features = ['macd', 'sma', 'Day_of_Week', 'Day_of_Month', 'Hour', 'log_returns', 'Is_Weekend']
         features_extended = [feature for feature in features_extended if feature not in drop_features]
+        # features_extended = ['volume', 'ema', 'rsi', 'bollinger_high', 'bollinger_low', 'vmap', 'percentage_returns', 'Month', 'Year']
+        # dataframe columns: ['timestamp', 'open', 'high', 'low', 'close', 'volume', 'sma', 'ema', 'rsi', 'macd', 'bollinger_high', 'bollinger_low', 'vmap','percentage_returns', 'log_returns', 'close_higher_shifted_1h','close_higher_shifted_24h', 'close_higher_shifted_168h', 'Datetime','Hour', 'Day_of_Week', 'Day_of_Month', 'Month', 'Year', 'Is_Weekend']
+        # print(f'features extended: {features_extended}')
+        # print(dataframe.head())
+        # print(dataframe.columns)
         X_extended = dataframe[features_extended].values
         scaler = StandardScaler()
         X_normalized = scaler.fit_transform(X_extended)
@@ -127,6 +136,8 @@ class AbstractOHLCV(models.Model):
         prices = data_normalized[features_extended].values
         tmp = xgb.DMatrix(prices)
         return tmp
+
+        
         
 
 class Bitcoin(AbstractOHLCV):

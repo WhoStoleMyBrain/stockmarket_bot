@@ -42,6 +42,7 @@ class SimulationDataHandler(AbstractDataHandler):
         account_holdings = self.get_account_holdings()
         new_crypto_data = self.get_new_crypto_data()
         usdc_held = self.get_liquidity()
+        # print(f'lengths in current state: account holdings: {len(account_holdings)}; new_crypto_data: {len(new_crypto_data)}')
         return np.array([total_volume, usdc_held] + account_holdings + new_crypto_data)
 
     def update_state(self, action):
@@ -254,15 +255,18 @@ class SimulationDataHandler(AbstractDataHandler):
     
     def get_new_crypto_data(self):
         all_entries = []
+        # print('getting new crypto data:')
         for crypto in self.crypto_models:
             crypto_latest = crypto.objects.using(self.database).latest('timestamp')
             all_entries = all_entries + self.crypto_to_list(crypto_latest)
             all_entries = all_entries + self.get_new_prediction_data(crypto, crypto_latest.timestamp)
+            # print('finished getting crypto data')
+        # print(f'all entries: {all_entries}')
         return all_entries
 
 class CustomEnv(gym.Env):
     def __init__(self, data_handler:AbstractDataHandler, asymmetry_factor:float=1):
-        print('Initializing env')
+        # print('Initializing env')
         super(CustomEnv, self).__init__()
         self.crypto_models = crypto_models
         self.data_handler = data_handler
@@ -277,6 +281,7 @@ class CustomEnv(gym.Env):
         self.volume_coefficient = 1.0
         M = len(self.get_crypto_features()) + len(self.get_crypto_predicted_features()) + len(self.get_extra_features())
         shape_value = M*N + 2 #! +1 because of total volume held and USDC value held
+        # print(f'M: {M}\tN: {N}\tM*N: {M*N}\n')
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(shape_value,), dtype=np.float64)
 
     def step(self, action):

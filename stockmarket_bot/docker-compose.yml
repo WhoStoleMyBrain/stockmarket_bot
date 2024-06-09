@@ -60,6 +60,9 @@ services:
     container_name: db
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
+    ports:
+      - "5432:5432"
   historical_db:
     image: timescale/timescaledb:latest-pg13
     environment:

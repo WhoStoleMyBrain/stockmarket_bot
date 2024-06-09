@@ -12,6 +12,7 @@ from .utilities.ml_utils import add_calculated_parameters
 from stockmarket_bot.celery import app
 import json
 from torch import no_grad
+from coinbase_api.constants import crypto_models
 
 
 def last_full_hour(date_time):
@@ -19,7 +20,8 @@ def last_full_hour(date_time):
 
 @app.task
 def update_ohlcv_data():
-    cryptos = [Bitcoin, Ethereum, Polkadot]  # Models for cryptos we want to update
+    # cryptos = [Bitcoin, Ethereum, Polkadot]  # Models for cryptos we want to update
+    cryptos = crypto_models
     granularity = 3600  # 1 hour in seconds
 
     for crypto in cryptos:
@@ -38,7 +40,7 @@ def update_ohlcv_data():
         for _ in range(int(chunks)):
             print(f'starting with chunk {_+1} of {int(chunks)}')
             tmp_end = start + timedelta(hours=300)
-            print(f'requesting data for {start.day}:{start.hour}-{tmp_end.day}:{tmp_end.hour}')
+            print(f'requesting data for {start.day}.{start.month}:{start.hour}-{tmp_end.day}.{tmp_end.month}:{tmp_end.hour}')
             data = cb_fetch_product_candles(f'{crypto.symbol}-USD', int(datetime.timestamp(start)), int(datetime.timestamp(tmp_end)), Granularities.ONE_HOUR.value)
             json_data = json.loads(data.content)
             store_data(crypto, json_data["candles"])

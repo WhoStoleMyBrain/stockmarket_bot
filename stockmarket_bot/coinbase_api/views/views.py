@@ -80,7 +80,7 @@ def cb_fetch_best_bid_asks(request):
     ----time\n
     """
     try:
-        data = cb_auth(Method.GET.value, "/api/v3/brokerage/best_bid_ask")
+        data = cb_auth.restClientInstance.get_best_bid_ask()
     except requests.RequestException as e:
         return JsonResponse({'error': str(e)}, status=500)
     return JsonResponse(data)
@@ -103,8 +103,8 @@ def cb_fetch_best_bid_ask(request):
     ----time\n
     """
     try:
-        product_ids = ['BTC-USD', 'ETH-USD']
-        data = cb_auth(Method.GET.value, f"/api/v3/brokerage/best_bid_ask?{'&'.join([f'product_ids={id}' for id in product_ids])}")
+        product_ids = ['BTC-USD', 'ETH-USD', "GOT-USD"]
+        data = cb_auth.restClientInstance.get_best_bid_ask(product_ids=product_ids)
     except requests.RequestException as e:
         return JsonResponse({'error': str(e)}, status=500)
     return JsonResponse(data)
@@ -125,11 +125,7 @@ def cb_fetch_product_book(request):
     ------size\n
     """
     try:
-        params = {
-            'product_id': 'BTC-USD',
-            'limit': 32,
-        }
-        data = cb_auth(Method.GET.value, "/api/v3/brokerage/product_book", '', params)
+        data = cb_auth.restClientInstance.get_product_book(product_id='BTC-USD', limit=32)
     except requests.RequestException as e:
         return JsonResponse({'error': str(e)}, status=500)
     return JsonResponse(data)
@@ -157,7 +153,7 @@ def cb_fetch_product(product_id):
     ... for more see result\n
     """
     try:
-        data = cb_auth(Method.GET.value, f"/api/v3/brokerage/products/{product_id}")
+        data = cb_auth.restClientInstance.get_product(product_id=product_id)
     except requests.RequestException as e:
         return JsonResponse({'error': str(e)}, status=500)
     except KeyError as e:
@@ -186,7 +182,7 @@ def cb_fetch_products():
     ... for more see result\n
     """
     try:
-        data = cb_auth(Method.GET.value, f"/api/v3/brokerage/products")
+        data = cb_auth.restClientInstance.get_products()
     except requests.RequestException as e:
         return JsonResponse({'error': str(e)}, status=500)
     except KeyError as e:
@@ -219,7 +215,7 @@ def cb_list_accounts(request):
     size
     '''
     try:
-        data = cb_auth(Method.GET.value, "/api/v3/brokerage/accounts")
+        data = cb_auth.restClientInstance.get_accounts()
     except requests.RequestException as e:
         return JsonResponse({'error': str(e)}, status=500)
     return JsonResponse(data)
@@ -234,7 +230,7 @@ def cb_get_account(request):
     '''
     try:
         account_uuid = '95f486aa-ac65-51b9-9da8-af08796f89ac'#! only example uuid
-        data = cb_auth(Method.GET.value, f"/api/v3/brokerage/accounts/{account_uuid}")
+        data = cb_auth.restClientInstance.get_account(account_uuid=account_uuid)
     except requests.RequestException as e:
         return JsonResponse({'error': str(e)}, status=500)
     return JsonResponse(data)
@@ -261,8 +257,7 @@ def cb_get_market_trades(request):
     '''
     try:
         product_id = 'BTC-USD'
-        params = {"limit":30}
-        data = cb_auth(Method.GET.value, f"/api/v3/brokerage/products/{product_id}/ticker", "", params)
+        data = cb_auth.restClientInstance.get_market_trades(product_id=product_id, limit=30)
     except requests.RequestException as e:
         return JsonResponse({'error': str(e)}, status=500)
     return JsonResponse(data)
@@ -284,11 +279,7 @@ def cb_list_orders(request):
     @query_param contract_expiry_type - Only orders matching this contract expiry type are returned. Filter is only applied if ProductType is set to FUTURE in the request.
     '''
     try:
-        params = {
-            "order_status": OrderStatus.OPEN.value,
-            "start_date": datetime.datetime(2023, 10, 1).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        }
-        data = cb_auth(Method.GET.value, f"/api/v3/brokerage/orders/historical/batch", "", params)
+        data = cb_auth.restClientInstance.list_orders(order_status=OrderStatus.OPEN.value, start_date=datetime.datetime(2023, 10, 1).strftime("%Y-%m-%dT%H:%M:%SZ"))
     except requests.RequestException as e:
         return JsonResponse({'error': str(e)}, status=500)
     return JsonResponse(data)

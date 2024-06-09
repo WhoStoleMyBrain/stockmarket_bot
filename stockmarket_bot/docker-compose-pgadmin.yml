@@ -1,0 +1,17 @@
+
+services:
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin4_container
+    restart: always
+    ports:
+      - "8888:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: user-name@domain-name.com
+      PGADMIN_DEFAULT_PASSWORD: strong-password
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    
+volumes:
+  pgadmin-data:
+# SELECT * from public.coinbase_api_ethereum where bollinger_high IS NULL or bollinger_low is null or ema is null or macd is null or rsi is null or sma is null

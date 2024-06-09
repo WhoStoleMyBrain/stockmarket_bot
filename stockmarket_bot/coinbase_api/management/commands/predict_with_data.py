@@ -6,8 +6,8 @@ from django.db.utils import IntegrityError
 # from coinbase_api.tasks import update_ohlcv_data
 # from coinbase_api.models.models import Bitcoin, Ethereum, Polkadot, Prediction
 from coinbase_api.tasks import predict_with_lstm, predict_with_xgboost
-from constants import crypto_models
-from enums import Database
+from coinbase_api.constants import crypto_models
+from coinbase_api.enums import Database
 from coinbase_api.utilities.prediction_handler import PredictionHandler
 
 class Command(BaseCommand):

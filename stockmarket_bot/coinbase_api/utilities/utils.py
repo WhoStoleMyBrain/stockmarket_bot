@@ -47,7 +47,7 @@ def cb_fetch_product_list():
     num_products
     """
     try:
-        data = cb_auth(Method.GET.value, "/api/v3/brokerage/products")
+        data = cb_auth.restClientInstance.get_products()
     except requests.RequestException as e:
         return JsonResponse({'error': str(e)}, status=500)
     return JsonResponse(data)
@@ -71,11 +71,6 @@ def cb_fetch_product_candles(product_id, start, end, granularity):
     ----volume\n
     """
     try:
-        params = {
-            'start' : start,
-            'end' : end,
-            'granularity': granularity,
-        }
         data = cb_auth.restClientInstance.get_candles(product_id=product_id, start=start, end=end, granularity=granularity)
         if 'errors' in data:
             # print(data['errors'])  # Logging the error for debugging purposes
