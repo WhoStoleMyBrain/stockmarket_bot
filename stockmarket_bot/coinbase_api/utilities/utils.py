@@ -238,7 +238,7 @@ def cb_find_earliest_data(product_id='BTC-USDC'):
         try:
             data = cb_fetch_product_candles(product_id, start, end, granularity)
             tmp = json.loads(data.content)
-            print(f'loaded data: {tmp}')
+            # print(f'loaded data: {tmp}')
         except TypeError:
             print(f'cb_find_earliest_data: data could not be serialized to json. Data: {data}')
             break

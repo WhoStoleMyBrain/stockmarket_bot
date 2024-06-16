@@ -48,6 +48,11 @@ class HistoricalPolkadot(HistoricalAbstractOHLCV):
     def __str__(self) -> str:
         return self.symbol
     
+class HistoricalSolana(HistoricalAbstractOHLCV):
+    symbol = "SOL"
+    def __str__(self) -> str:
+        return self.symbol
+    
 class HistoricalPrediction(models.Model):
     timestamp_predicted_for = models.DateTimeField(db_index=True)
     timestamp_predicted_at = models.DateTimeField(auto_now_add=True, db_index=True)

@@ -155,6 +155,11 @@ class Polkadot(AbstractOHLCV):
     def __str__(self) -> str:
         return self.symbol
     
+class Solana(AbstractOHLCV):
+    symbol = "SOL"
+    def __str__(self) -> str:
+        return self.symbol
+    
 class Prediction(models.Model):
     timestamp_predicted_for = models.DateTimeField(db_index=True)
     timestamp_predicted_at = models.DateTimeField(auto_now_add=True, db_index=True)
