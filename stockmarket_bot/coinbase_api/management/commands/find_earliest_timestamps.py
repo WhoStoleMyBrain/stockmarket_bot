@@ -15,7 +15,14 @@ class Command(BaseCommand):
     def handle(self, *args, **kwargs):
         print('starting earliest timestamp')
         for model in crypto_models:
-            earliest_date_timestamp = cb_find_earliest_data(f'{model.symbol}-USDC')
+            try:
+                obj = CryptoMetadata.objects.using('historical').get(
+                    symbol=CryptoMetadata.symbol_to_storage(model.symbol),
+                    )
+                print(f'already had earliest data: {model.symbol}: {obj.earliest_date}')
+                continue
+            except CryptoMetadata.DoesNotExist:
+                earliest_date_timestamp = cb_find_earliest_data(f'{model.symbol}-USDC')
             print(f'earliest_date_timestamp: {earliest_date_timestamp}')
             if earliest_date_timestamp is not None:
                 earliest_date = datetime.fromtimestamp(earliest_date_timestamp)

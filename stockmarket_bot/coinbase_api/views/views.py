@@ -314,5 +314,5 @@ def command_buttons(request):
         except Exception as e:
             status_message = f'Error: {str(e)}'
         
-    commands = ['check_if_all_data_present', 'find_earliest_timestamps', 'initialize_db', 'predict_with_data', 'start_training', 'trigger_db_update_task', 'trigger_historical_db_update_task']  # List your custom commands here
+    commands = ['check_if_all_data_present', 'find_earliest_timestamps', 'initialize_db', 'predict_with_data', 'start_training', 'trigger_db_update_task', 'trigger_historical_db_update_task', 'replace_null_in_historical_db']  # List your custom commands here
     return render(request, 'command_buttons.html', {'commands': commands, 'status_message': status_message})

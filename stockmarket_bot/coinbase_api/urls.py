@@ -32,6 +32,7 @@ from coinbase_api.api_views.api_views import (
     cb_fetch_product_view,
     cb_fetch_product_candles_view, 
     cb_fetch_product_list_view,
+    write_currencies_to_file,
     # cb_fetch_products_view
 )
 
@@ -62,6 +63,7 @@ urlpatterns = [
     path('cb-fetch-best-bid-ask/', cb_fetch_best_bid_ask, name='cb_fetch_best_bid_ask'),
     path('cb-fetch-product-book/', cb_fetch_product_book, name='cb_fetch_product_book'),
     path('cb-fetch-product-list/', cb_fetch_product_list_view, name='cb_fetch_product_list'),
+    path('write-currencies-to-file/', write_currencies_to_file, name='write_currencies_to_file'),
     path('cb-fetch-product/', cb_fetch_product_view, name='cb_fetch_product'),
     # path('cb-fetch-products/', cb_fetch_products_view, name='cb_fetch_products'),
     path('cb-list-accounts/', cb_list_accounts, name='cb_list_accounts'),

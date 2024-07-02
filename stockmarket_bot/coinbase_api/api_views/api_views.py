@@ -1,3 +1,4 @@
+import os
 import requests
 from django.http import JsonResponse
 import json
@@ -61,7 +62,8 @@ def cb_fetch_product_list_view(request):
             for item in products:
                 item['quote_display_symbol'] = item['product_id'].split('-')[1]
                 item['base_display_symbol'] = item['product_id'].split('-')[0]
-                changed_products.append(item)
+                if item['quote_display_symbol'] == 'USDC':
+                    changed_products.append(item)
             serializer = CryptocurrencySerializer(data=changed_products, many=True)
             if serializer.is_valid():
                 serializer.save()
@@ -74,6 +76,24 @@ def cb_fetch_product_list_view(request):
         return JsonResponse({'error': str(e)}, status=500)
     return JsonResponse(data)
 
+def get_class_name_from_crypto(crypto_name: str):
+    if crypto_name[0].isdigit():
+        return f'PREFIX{crypto_name}'
+    return crypto_name
+
+@api_view(['GET'])
+def write_currencies_to_file(request):
+    data = Cryptocurrency.objects.filter(quote_display_symbol = 'USDC')
+    print(os.getcwd())
+    path = './coinbase_api/models/generated_models.py'
+    with open(path, 'w') as f:
+        f.write(f'from coinbase_api.models.models import AbstractOHLCV\n\n')
+        f.write(f'# from coinbase_api.models.generated_models import *\n')
+        f.write(f'# crypto_models = [{", ".join(get_class_name_from_crypto(dat.base_display_symbol) for dat in data)}]')
+        for dat in data:
+            f.write(f'\nclass {get_class_name_from_crypto(dat.base_display_symbol)}(AbstractOHLCV):\n\tsymbol = "{dat.base_display_symbol}"\n\tdef __str__(self) -> str:\n\t\treturn self.symbol\n')
+        f.close()
+    return JsonResponse(data = {'succesfully created items:': data.count()}, status=200)
 
 @api_view(['GET'])
 def cb_fetch_product_view(request):

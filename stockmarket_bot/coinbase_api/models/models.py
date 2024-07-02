@@ -28,15 +28,15 @@ class AbstractOHLCV(models.Model):
     low = models.FloatField(null=True, db_index=True)   # Assuming high/low might be queried often
     close = models.FloatField(null=True, db_index=True)
     volume = models.FloatField(null=True)
-    sma = models.FloatField(null=True)
-    ema = models.FloatField(null=True)
-    rsi = models.FloatField(null=True)
-    macd = models.FloatField(null=True)
-    bollinger_high = models.FloatField(null=True)
-    bollinger_low = models.FloatField(null=True)
-    vmap = models.FloatField(null=True)
-    percentage_returns = models.FloatField(null=True)
-    log_returns = models.FloatField(null=True)
+    sma = models.FloatField(null=True, default=0)
+    ema = models.FloatField(null=True, default=0)
+    rsi = models.FloatField(null=True, default=0)
+    macd = models.FloatField(null=True, default=0)
+    bollinger_high = models.FloatField(null=True, default=0)
+    bollinger_low = models.FloatField(null=True, default=0)
+    vmap = models.FloatField(null=True, default=0)
+    percentage_returns = models.FloatField(null=True, default=0)
+    log_returns = models.FloatField(null=True, default=0)
     close_higher_shifted_1h = models.BooleanField(null=True)
     close_higher_shifted_24h = models.BooleanField(null=True)
     close_higher_shifted_168h = models.BooleanField(null=True)
@@ -55,6 +55,7 @@ class AbstractOHLCV(models.Model):
         ]
 
     def all_fields_set(self)->bool:
+        # TODO redo this method since there is actually no none values anymore
         # print(f'check in all_fields_set. self: {self}')
         if (
             self.open is None or
@@ -72,7 +73,20 @@ class AbstractOHLCV(models.Model):
             self.log_returns is None or
             self.close_higher_shifted_1h is None or
             self.close_higher_shifted_24h is None or
-            self.close_higher_shifted_168h is None            
+            self.close_higher_shifted_168h is None or
+            self.open == 0.0 or
+            self.high == 0.0 or
+            self.low == 0.0 or
+            self.close == 0.0 or
+            self.volume == 0.0 or
+            self.sma == 0.0 or
+            self.ema == 0.0 or
+            self.rsi == 0.0 or
+            self.macd == 0.0 or
+            self.bollinger_high == 0.0 or
+            self.bollinger_low == 0.0 or
+            self.percentage_returns == 0.0 or
+            self.log_returns == 0.0         
         ):
             return False
         return True
@@ -136,8 +150,49 @@ class AbstractOHLCV(models.Model):
         prices = data_normalized[features_extended].values
         tmp = xgb.DMatrix(prices)
         return tmp
+    
+    @classmethod
+    def default_entry(cls, timestamp):
+        return cls(
+            timestamp = timestamp,
+            open = 0,
+            high = 0,
+            low = 0,
+            close = 0,
+            volume = 0,
+            sma = 0,
+            ema = 0,
+            rsi = 0,
+            macd = 0,
+            bollinger_high = 0,
+            bollinger_low = 0,
+            vmap = 0,
+            percentage_returns = 0,
+            log_returns = 0,
+            close_higher_shifted_1h = 0,
+            close_higher_shifted_24h = 0,
+            close_higher_shifted_168h = 0
+        )
 
-        
+    def set_nonset_values_to_default(self):
+        self.open = 0.0 if (self.open == None or self.open == 0.0) else self.open
+        self.high = 0.0 if (self.high == None or self.high == 0.0) else self.high
+        self.low = 0.0 if (self.low == None or self.low == 0.0) else self.low
+        self.close = 0.0 if (self.close == None or self.close == 0.0) else self.close
+        self.volume = 0.0 if (self.volume == None or self.volume == 0.0) else self.volume
+        self.sma = 0.0 if (self.sma == None or self.sma == 0.0) else self.sma
+        self.ema = 0.0 if (self.ema == None or self.ema == 0.0) else self.ema
+        self.rsi = 0.0 if (self.rsi == None or self.rsi == 0.0) else self.rsi
+        self.macd = 0.0 if (self.macd == None or self.macd == 0.0) else self.macd
+        self.bollinger_high = 0.0 if (self.bollinger_high == None or self.bollinger_high == 0.0) else self.bollinger_high
+        self.bollinger_low = 0.0 if (self.bollinger_low == None or self.bollinger_low == 0.0) else self.bollinger_low
+        self.vmap = 0.0 if (self.vmap == None or self.vmap == 0.0) else self.vmap
+        self.percentage_returns = 0.0 if (self.percentage_returns == None or self.percentage_returns == 0.0) else self.percentage_returns
+        self.log_returns = 0.0 if (self.log_returns == None or self.log_returns == 0.0) else self.log_returns
+        self.close_higher_shifted_1h = 0.0 if (self.close_higher_shifted_1h == None or self.close_higher_shifted_1h == 0.0) else self.close_higher_shifted_1h
+        self.close_higher_shifted_24h = 0.0 if (self.close_higher_shifted_24h == None or self.close_higher_shifted_24h == 0.0) else self.close_higher_shifted_24h
+        self.close_higher_shifted_168h = 0.0 if (self.close_higher_shifted_168h == None or self.close_higher_shifted_168h == 0.0) else self.close_higher_shifted_168h
+        return self
         
 
 class Bitcoin(AbstractOHLCV):
@@ -179,7 +234,7 @@ class Account(models.Model):
     value = models.FloatField()
 
 class CryptoMetadata(models.Model):
-    symbol = models.CharField(max_length=10, unique=True)
+    symbol = models.CharField(max_length=255, unique=True)
     earliest_date = models.DateTimeField()
 
     def __str__(self):

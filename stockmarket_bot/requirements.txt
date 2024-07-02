@@ -17,3 +17,4 @@ stable-baselines3[extra]==2.1.0
 gymnasium==0.29.1
 shimmy
 coinbase-advanced-py
+django-bulk-update-or-create

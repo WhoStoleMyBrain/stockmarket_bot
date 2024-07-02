@@ -10,6 +10,7 @@ from stable_baselines3.common import env_checker
 from gymnasium import spaces
 from coinbase_api.ml_models.RL_decider_model import CustomEnv, SimulationDataHandler
 import numpy as np
+import traceback
 
 class Command(BaseCommand):
     help = 'Traing the RL model for a number of iterations over the whole dataset'
@@ -36,7 +37,7 @@ class Command(BaseCommand):
             except ValueError:
                 raise CommandError('The provided parameter is not a valid number')
         else:
-            param = 50 # default value
+            param = 100 # default value
         model_path = 'coinbase_api/ml_models/rl_model.pkl'
         # timesteps = 50
         data_handler = SimulationDataHandler()
@@ -44,10 +45,10 @@ class Command(BaseCommand):
             # Load the existing model
             print('Loaded model!')
             env = CustomEnv(data_handler=data_handler, total_steps=param, asymmetry_factor=0.5)
-            model = PPO.load(model_path, env=env, n_steps=param, observation_space = self.get_action_space())
-            model.action_space = self.get_action_space()
-            model.observation_space = self.get_action_space()
-            print(f'model obs shape: {model.observation_space.shape}')
+            model = PPO.load(model_path, env=env, n_steps=param)
+        #     model.action_space = self.get_action_space()
+        #     model.observation_space = self.get_action_space()
+        #     print(f'model obs shape: {model.observation_space.shape}')
         else:
             # Create a new model
             env = CustomEnv(data_handler=data_handler, total_steps=param, asymmetry_factor=0.5)
@@ -71,7 +72,7 @@ class Command(BaseCommand):
                 model.learn(total_timesteps=param, progress_bar=True, reset_num_timesteps=True)
                 model.save(model_path)
             except Exception as e:
-                print(f'exception occured: {e}:{e.with_traceback()}')
+                print(f'exception occured: {e}: {traceback.format_exc()}')
                 model.save(model_path)
         # obs, reward, done, info = env.step(action)
         # print(f'reward: {reward}')

@@ -1,0 +1,23 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "Debug Django Command",
+        "type": "shell",
+        "command": "docker compose run --rm --service-ports -d web python -m debugpy --wait-for-client --listen 0.0.0.0:5678 -m manage ${input:commandToRun}",
+        "presentation": {
+          "reveal": "always",
+          "panel": "shared"
+        }
+      }
+    ],
+    "inputs": [
+      {
+        "id": "commandToRun",
+        "description": "Select client or server",
+        "type": "pickString",
+        "options": ["start_training", "trigger_historical_db_update_task"],
+        "default": "start_training"
+      }
+    ]
+  }
