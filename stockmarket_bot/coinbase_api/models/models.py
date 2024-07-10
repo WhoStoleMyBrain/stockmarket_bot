@@ -3,6 +3,7 @@ import pandas as pd
 from torch import no_grad, tensor, float32
 from sklearn.preprocessing import StandardScaler
 import numpy as np
+import torch
 import xgboost as xgb
 
 class Cryptocurrency(models.Model):
@@ -94,62 +95,76 @@ class AbstractOHLCV(models.Model):
     @staticmethod
     def queryset_to_lstm_dataframe(queryset, seq_length=100):
         features = ['volume', 'sma', 'ema', 'rsi', 'macd', 'bollinger_high', 'bollinger_low', 'vmap', 'percentage_returns', 'log_returns']
-        # Convert the queryset to a list of dictionaries
-        data_dict_list = queryset.values()
-        # print(f'data dict list: {len(data_dict_list)}')
-        dataframe = pd.DataFrame.from_records(data_dict_list, index='timestamp')
-        dataframe.drop(columns=['id'], inplace=True)
-        dataframe = dataframe.fillna(0)
-        # print(dataframe.head())
-        # print(dataframe.tail())
+        data_dict_list = list(queryset.values('timestamp', *features))
+        dataframe = pd.DataFrame(data_dict_list)
+        dataframe.set_index('timestamp', inplace=True)
+        dataframe.fillna(0, inplace=True)
+        
         prices = dataframe[features].values
         scaler = StandardScaler()
-        scaler.fit(prices)
-        X_test = []
-        X_test.append(prices[:, :len(features)])
-        X_test = np.array(X_test)
-        X_test_2D = X_test.reshape(-1, X_test.shape[-1])
-        X_test_scaled_2D = scaler.transform(X_test_2D)
-        X_test = X_test_scaled_2D.reshape(X_test.shape)
-        tensor_data = tensor(X_test, dtype=float32)
+        prices_scaled = scaler.fit_transform(prices)
+        
+        tensor_data = torch.tensor(prices_scaled, dtype=torch.float32).unsqueeze(0)
         return tensor_data
+    
+    # @staticmethod
+    # def queryset_to_lstm_dataframe(queryset, seq_length=100):
+    #     features = ['volume', 'sma', 'ema', 'rsi', 'macd', 'bollinger_high', 'bollinger_low', 'vmap', 'percentage_returns', 'log_returns']
+    #     # Convert the queryset to a list of dictionaries
+    #     data_dict_list = queryset.values()
+    #     # print(f'data dict list: {len(data_dict_list)}')
+    #     dataframe = pd.DataFrame.from_records(data_dict_list, index='timestamp')
+    #     dataframe.drop(columns=['id'], inplace=True)
+    #     dataframe = dataframe.fillna(0)
+    #     # print(dataframe.head())
+    #     # print(dataframe.tail())
+    #     prices = dataframe[features].values
+    #     scaler = StandardScaler()
+    #     scaler.fit(prices)
+    #     X_test = []
+    #     X_test.append(prices[:, :len(features)])
+    #     X_test = np.array(X_test)
+    #     X_test_2D = X_test.reshape(-1, X_test.shape[-1])
+    #     X_test_scaled_2D = scaler.transform(X_test_2D)
+    #     X_test = X_test_scaled_2D.reshape(X_test.shape)
+    #     tensor_data = tensor(X_test, dtype=float32)
+    #     return tensor_data
+    
+    @staticmethod
+    def get_features():
+        return ['volume', 'sma', 'ema', 'rsi', 'macd', 'bollinger_high', 'bollinger_low', 'vmap', 'percentage_returns', 'log_returns']
+    
+    @staticmethod
+    def get_features_extended():
+        return AbstractOHLCV.get_features() + ['Hour', 'Day_of_Week', 'Day_of_Month', 'Month', 'Year', 'Is_Weekend']
+    
+    @staticmethod
+    def get_drop_features():
+        return ['macd', 'sma', 'Day_of_Week', 'Day_of_Month', 'Hour', 'log_returns', 'Is_Weekend']
+    
+    @staticmethod
+    def get_features_dropped():
+        return [feature for feature in AbstractOHLCV.get_features_extended() if feature not in AbstractOHLCV.get_drop_features()]
     
     @staticmethod
     def queryset_to_xgboost_dataframe(queryset):
-        def check_timestamp(ts):
-            return len(str(ts)) == 13
-        features = ['volume', 'sma', 'ema', 'rsi', 'macd', 'bollinger_high', 'bollinger_low', 'vmap', 'percentage_returns', 'log_returns']
-        # Convert the queryset to a list of dictionaries
-        data_dict_list = queryset.values()
-        dataframe = pd.DataFrame.from_records(data_dict_list)
-        dataframe.drop(columns=['id'], inplace=True)
-        dataframe['timestamp'] = dataframe['timestamp'].apply(lambda x: x//1000 if check_timestamp(x) else x)
-        dataframe['Datetime'] = pd.to_datetime(dataframe['timestamp'], unit='s')
-        dataframe['Hour'] = dataframe['Datetime'].dt.hour
-        dataframe['Day_of_Week'] = dataframe['Datetime'].dt.dayofweek  # Monday=0, Sunday=6
-        dataframe['Day_of_Month'] = dataframe['Datetime'].dt.day
-        dataframe['Month'] = dataframe['Datetime'].dt.month
-        dataframe['Year'] = dataframe['Datetime'].dt.year
-        dataframe['Is_Weekend'] = (dataframe['Day_of_Week'] >= 5).astype(int)  # 1 for weekend, 0 for weekdays
-        # Updating the features list
-        features_extended = features + ['Hour', 'Day_of_Week', 'Day_of_Month', 'Month', 'Year', 'Is_Weekend']
-        # features_extended = ['volume', 'sma', 'ema', 'rsi', 'macd', 'bollinger_high', 'bollinger_low', 'vmap', 'percentage_returns', 'log_returns', 'Hour', 'Day_of_Week', 'Day_of_Month', 'Month', 'Year', 'Is_Weekend']
-        drop_features = ['macd', 'sma', 'Day_of_Week', 'Day_of_Month', 'Hour', 'log_returns', 'Is_Weekend']
-        # drop_features = ['macd', 'sma', 'Day_of_Week', 'Day_of_Month', 'Hour', 'log_returns', 'Is_Weekend']
-        features_extended = [feature for feature in features_extended if feature not in drop_features]
-        # features_extended = ['volume', 'ema', 'rsi', 'bollinger_high', 'bollinger_low', 'vmap', 'percentage_returns', 'Month', 'Year']
-        # dataframe columns: ['timestamp', 'open', 'high', 'low', 'close', 'volume', 'sma', 'ema', 'rsi', 'macd', 'bollinger_high', 'bollinger_low', 'vmap','percentage_returns', 'log_returns', 'close_higher_shifted_1h','close_higher_shifted_24h', 'close_higher_shifted_168h', 'Datetime','Hour', 'Day_of_Week', 'Day_of_Month', 'Month', 'Year', 'Is_Weekend']
-        # print(f'features extended: {features_extended}')
-        # print(dataframe.head())
-        # print(dataframe.columns)
-        X_extended = dataframe[features_extended].values
+        data_dict_list = list(queryset.values('timestamp', *AbstractOHLCV.get_features()))
+        dataframe = pd.DataFrame(data_dict_list)
+        dataframe.fillna(0, inplace=True)
+        
+        dataframe['timestamp'] = pd.to_datetime(dataframe['timestamp'], unit='s')
+        dataframe['Hour'] = dataframe['timestamp'].dt.hour
+        dataframe['Day_of_Week'] = dataframe['timestamp'].dt.dayofweek
+        dataframe['Day_of_Month'] = dataframe['timestamp'].dt.day
+        dataframe['Month'] = dataframe['timestamp'].dt.month
+        dataframe['Year'] = dataframe['timestamp'].dt.year
+        dataframe['Is_Weekend'] = (dataframe['Day_of_Week'] >= 5).astype(int)
+        features_extended = AbstractOHLCV.get_features_dropped()
+        dataframe_extended = dataframe[features_extended]
         scaler = StandardScaler()
-        X_normalized = scaler.fit_transform(X_extended)
-        data_normalized = dataframe.copy()
-        data_normalized[features_extended] = X_normalized
-        prices = data_normalized[features_extended].values
-        tmp = xgb.DMatrix(prices)
-        return tmp
+        dataframe_scaled = scaler.fit_transform(dataframe_extended)
+        data_dmatrix = xgb.DMatrix(dataframe_scaled)
+        return data_dmatrix
     
     @classmethod
     def default_entry(cls, timestamp):

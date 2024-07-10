@@ -119,87 +119,92 @@ class SimulationDataHandler(AbstractDataHandler):
         return (sell_action + action_factor) / (1 - action_factor)
     
     def update_state(self, action) -> Tuple[npt.NDArray[np.float16], float, bool, Dict[Any, Any]]:
-        start_time = datetime.now()
-        # print(f'{self.step_count}/{self.total_steps}\tstart time:\t{start_time}')
-        costs_for_action = self.cost_for_action(action) # 0.4s
-        # print(f'{self.step_count}/{self.total_steps}\tcosts for action:\t{datetime.now() - start_time}')
+        costs_for_action = self.cost_for_action(action)
         buy_indices = [(idx, i) for idx, i in enumerate(action) if i > self.action_factor]
         sell_indices = [(idx, i) for idx, i in enumerate(action) if i < -self.action_factor]
-        # print(f'{self.step_count}/{self.total_steps}\tgetting indices:\t{datetime.now() - start_time}')
         # perform buy actions on DB
-        # 3-4s
-        # Perform buy actions
-        usdc_account = self.get_crypto_account('USDC')
-        individual_liquidity = (self.get_liquidity() - sum(costs_for_action)) / len(buy_indices) if len(buy_indices) > 0 else 0
-        crypto_updates:List[Account] = []
-        usdc_updates:List[Account] = []
-
-        for idx, buy_action in buy_indices:
-            crypto_model = self.crypto_models[idx]
-            crypto_account = self.get_crypto_account(crypto_model.symbol)
-            cost_for_action = costs_for_action[idx]
-            buy_action_mapped = self.map_buy_action(buy_action, self.action_factor)
-            crypto_value = crypto_model.objects.using(self.database).latest('timestamp').close
-            buy_amount = individual_liquidity * buy_action_mapped if crypto_value else 0
-            crypto_account.value += (buy_amount - cost_for_action) / crypto_value if crypto_value else 0
-            usdc_account.value -= buy_amount
-            crypto_updates.append(crypto_account)
-            usdc_updates.append(usdc_account)
-
-        # print(f'{self.step_count}/{self.total_steps}\tbuy indices:\t{datetime.now() - start_time}')
-        # Perform sell actions
-        for idx, sell_action in sell_indices:
-            crypto_model = self.crypto_models[idx]
-            crypto_account = self.get_crypto_account(crypto_model.symbol)
-            cost_for_action = costs_for_action[idx]
-            sell_action_mapped = self.map_sell_action(sell_action, self.action_factor)
-            crypto_value = crypto_model.objects.using(self.database).latest('timestamp').close
-            sell_amount = abs(crypto_account.value * sell_action_mapped) if crypto_value else 0
-            usdc_account.value += sell_amount * crypto_value - cost_for_action if crypto_value else 0
-            crypto_account.value -= sell_amount
-            crypto_updates.append(crypto_account)
-            usdc_updates.append(usdc_account)
-
-        # print(f'updates:')
-        # for crypto_acc in crypto_updates:
-        #     print(f'\t{crypto_acc.currency}:\t{crypto_acc.value}')
-        # print(f'updates:')
-        # for crypto_acc in usdc_updates:
-        #     print(f'\t{crypto_acc.currency}:\t{crypto_acc.value}')
-        # Bulk save updates
-        with transaction.atomic(using=self.database):
-            Account.objects.using(self.database).bulk_update(crypto_updates, ['value'])
-            Account.objects.using(self.database).bulk_update(usdc_updates, ['value'])
-        # print(f'{self.step_count}/{self.total_steps}\tsell indices:\t{datetime.now() - start_time}')
+        try:
+            usdc_account = self.get_crypto_account('USDC')
+        except Account.DoesNotExist:
+            raise NotImplementedError("USDC Account not found. Incorrect state!")
+        if len(buy_indices) > 0:
+            individual_liquidity = (self.get_liquidity() - sum(costs_for_action))/len(buy_indices)
+            for idx, buy_action in buy_indices:
+                crypto_model = self.crypto_models[idx]
+                try:
+                    crypto_account = self.get_crypto_account(crypto_model.symbol)
+                except Account.DoesNotExist:
+                    continue
+                cost_for_action = costs_for_action[idx]
+                buy_action_mapped = self.map_buy_action(buy_action, self.action_factor)
+                try:
+                    crypto_value = crypto_model.objects.using(self.database).latest('timestamp').close
+                    if crypto_value == None:
+                        buy_amount = 0
+                    else:
+                        buy_amount = individual_liquidity * buy_action_mapped
+                        if (crypto_value != 0):
+                            crypto_account.value += (buy_amount - cost_for_action)/crypto_value
+                except crypto_model.DoesNotExist:
+                    buy_amount = 0
+                except AttributeError:
+                    buy_amount = 0
+                #! SANITY CHECK: NO VALUES FOR CRYPTO ACCOUNT SO NONE SHOULD BE BOUGHT
+                if (crypto_value == 0):
+                    buy_amount = 0
+                crypto_account.save(using=self.database)
+                usdc_account.value -= buy_amount
+                usdc_account.save(using=self.database)
+        # perform sell actions on DB
+        if len(sell_indices) > 0:
+            for idx, sell_action in sell_indices:
+                    crypto_model = self.crypto_models[idx]
+                    try:
+                        crypto_account = self.get_crypto_account(crypto_model.symbol)
+                    except Account.DoesNotExist:
+                        continue
+                    cost_for_action = costs_for_action[idx]
+                    sell_action_mapped = self.map_sell_action(sell_action, self.action_factor)
+                    try:
+                        crypto_value = crypto_model.objects.using(self.database).latest('timestamp').close
+                        if crypto_value == None:
+                            sell_amount = 0
+                            usdc_account.value += 0
+                        else:
+                            sell_amount = abs(crypto_account.value * sell_action_mapped)
+                            usdc_account.value += sell_amount * crypto_value - cost_for_action # *-1 because original action is negative
+                    except crypto_model.DoesNotExist:
+                        crypto_value = crypto_model.default_entry(timestamp=datetime(year=2024, month=6, day=20)).close
+                        sell_amount = 0
+                        usdc_account.value += 0
+                    except AttributeError:
+                        crypto_value = crypto_model.default_entry(timestamp=datetime(year=2024, month=6, day=20)).close
+                        sell_amount = 0
+                        usdc_account.value += 0
+                    crypto_account.value -= sell_amount
+                    crypto_account.save(using=self.database)
+        usdc_account.save(using=self.database)
         new_timestamp = self.timestamp + timedelta(hours=1)
         done = False
         # fetching new crypto data
-        # 3-4s
-        # Fetch new crypto data in bulk
-        # Fetch new crypto data in bulk and prepare for bulk creation
-        new_data_instances = []
         for crypto in self.crypto_models:
-            historical_data = crypto.objects.using(Database.HISTORICAL.value).filter(timestamp=new_timestamp).first()
-            if historical_data is None:
+            try:
+                historical_data = crypto.objects.using(Database.HISTORICAL.value).filter(timestamp=new_timestamp).first()
+            except crypto.DoesNotExist:
+                done = True
+                print(f'No new data for {crypto.symbol}')
+                break
+            if historical_data == None:
                 new_data = crypto.default_entry(timestamp=new_timestamp)
             else:
                 new_data = self.get_new_instance(crypto_model=crypto, instance=historical_data)
-            new_data_instances.append([new_data])
-
-        # Bulk create new data instances
-        with transaction.atomic(using=self.database):
-            for crypto_model, instances in zip(self.crypto_models, new_data_instances):
-                crypto_model.objects.using(self.database).bulk_create(instances)
-        # print(f'{self.step_count}/{self.total_steps}\tnew data:\t{datetime.now() - start_time}')
-        # 30-45s
+            new_data.save(using=self.database)
         # make new predictions
         self.prediction_handler.timestamp = new_data.timestamp
         self.timestamp = new_timestamp
-        self.prediction_handler.predict() # 33s
-        # print(f'{self.step_count}/{self.total_steps}\tpredict:\t{datetime.now() - start_time}')
-        self.state = self.get_current_state() # 2s
+        self.prediction_handler.predict()
+        self.state = self.get_current_state()
         # self.volume_decay(factor=0.0005)
-        print(f'{self.step_count}/{self.total_steps}\tend time:\t{datetime.now() - start_time}')
         self.step_count += 1
         info = {}
         return self.state, sum(costs_for_action), done, info

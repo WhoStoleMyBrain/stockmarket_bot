@@ -2,6 +2,7 @@
 from typing import Any, Dict, List, Tuple
 import numpy as np
 import numpy.typing as npt
+from coinbase_api.enums import Actions
 from coinbase_api.models.models import AbstractOHLCV, Account
 from datetime import datetime
 class AbstractDataHandler:
@@ -45,7 +46,26 @@ class AbstractDataHandler:
         raise NotImplementedError
 
     def get_reward_ratios_for_current_timestep(self) -> Dict[str, float]:
-        raise NotImplementedError
+        ratios = {}
+        for crypto_model in self.crypto_models:
+            try:
+                value = crypto_model.objects.using(self.database).filter(timestamp=self.timestamp).first().close
+            except crypto_model.DoesNotExist:
+               value = crypto_model.default_entry(timestamp=datetime(year=2020, month=1, day=1)).close # this should always be 0
+            except AttributeError:
+               value = crypto_model.default_entry(timestamp=datetime(year=2020, month=1, day=1)).close # this should always be 0
+            try:
+                ratios[crypto_model.symbol] = value / self.initial_prices[crypto_model.symbol]
+            except ZeroDivisionError:
+                ratios[crypto_model.symbol] = 0
+
+        tmp = {k: v for k,v in sorted(ratios.items(), key=lambda item: -item[1])}
+        ret_map = {}
+        for idx, key in enumerate(tmp.keys()):
+            if (idx > 5):
+                break
+            ret_map[key] = tmp[key]
+        return ret_map
     
     def get_crypto_account(self, symbol: str) -> Account:
         raise NotImplementedError
@@ -84,4 +104,18 @@ class AbstractDataHandler:
         raise NotImplementedError
     
     def get_new_crypto_data(self) -> List[float]:
+        raise NotImplementedError
+    
+    #! Getters !#
+    
+    def get_step_count(self) -> int:
+        raise NotImplementedError
+    
+    def get_total_steps(self) -> int:
+        raise NotImplementedError
+
+    def get_current_state_output(self, action) -> str:
+        raise NotImplementedError
+    
+    def get_reward(self, action: Actions)-> float:
         raise NotImplementedError

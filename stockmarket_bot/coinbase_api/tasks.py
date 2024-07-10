@@ -32,20 +32,20 @@ def update_ohlcv_data():
 
         latest_entry = crypto.objects.order_by('-timestamp').first()
         # start = latest_entry.timestamp if latest_entry else last_full_hour(datetime.utcnow()) - timedelta(days=30)
-        start = make_naive(latest_entry.timestamp) if latest_entry else last_full_hour(datetime.now()) - timedelta(days=30)
+        start = latest_entry.timestamp if latest_entry else last_full_hour(datetime.now()) - timedelta(days=30)
         end = last_full_hour(datetime.now())
         delta = end - start
         required_data_points = delta.total_seconds() / granularity
         chunks = -(-required_data_points // 300)  # Calculate the number of chunks (ceiling division)
         for _ in range(int(chunks)):
-            print(f'starting with chunk {_+1} of {int(chunks)}')
+            print(f'{datetime.now()}: starting with chunk {_+1} of {int(chunks)}')
             tmp_end = start + timedelta(hours=300)
-            print(f'requesting data for {start.day}.{start.month}:{start.hour}-{tmp_end.day}.{tmp_end.month}:{tmp_end.hour}')
+            print(f'requesting data for {start.year}.{start.month}.{start.day}:{start.hour}-{tmp_end.year}.{tmp_end.month}.{tmp_end.day}:{tmp_end.hour}')
             data = cb_fetch_product_candles(f'{crypto.symbol}-USD', int(datetime.timestamp(start)), int(datetime.timestamp(tmp_end)), Granularities.ONE_HOUR.value)
             json_data = json.loads(data.content)
             store_data(crypto, json_data["candles"])
             start += timedelta(hours=300)  # Move start ahead by 300 hours
-            print(f'finished with chunk {_+1} of {int(chunks)}')
+            print(f'{datetime.now()}: finished with chunk {_+1} of {int(chunks)}')
 
         # Deleting data older than a month
         add_calculated_parameters(crypto)
@@ -56,22 +56,34 @@ def update_ohlcv_data():
     # new_data = Bitcoin.objects.all()
     # chain(predict_with_lstm.s(new_data), predict_with_xgboost.s(new_data)).apply_async()
 
-def store_data(crypto_model, data):
+def store_data(crypto_model, data, database=Database.DEFAULT.value):
     try:
+        entries = []
         for item in data:
-            timestamp, low, high, opening, close_base, volume = float(item["start"]), float(item["low"]), float(item["high"]), float(item["open"]), float(item["close"]), float(item["volume"])
-            new_entry = crypto_model.objects.create(
-                timestamp=make_aware(datetime.utcfromtimestamp(int(timestamp))),
-                open=opening,
-                high=high,
-                low=low,
-                close=close_base,
-                volume=volume,
-            )
-            new_entry.save()
+            try:
+                timestamp = float(item["start"])
+                low = float(item["low"])
+                high = float(item["high"])
+                opening = float(item["open"])
+                close_base = float(item["close"])
+                volume = float(item["volume"])
+                
+                new_entry = crypto_model(
+                    timestamp=make_aware(datetime.utcfromtimestamp(int(timestamp))),
+                    open=opening,
+                    high=high,
+                    low=low,
+                    close=close_base,
+                    volume=volume,
+                )
+                entries.append(new_entry)
+            except Exception as e:
+                print(f'Encountered an error with item {item}: {e}')
+        
+        # Use bulk_create to insert all entries at once
+        crypto_model.objects.using(database).bulk_create(entries)
     except Exception as e:
         print(f'Encountered the following error: {e}')
-
 @app.task
 def predict_with_lstm(data, timestamp, crypto_model:AbstractOHLCV, database=Database.DEFAULT.value):
     # print(f'start trying to predict with lstm on database: {database}...')
