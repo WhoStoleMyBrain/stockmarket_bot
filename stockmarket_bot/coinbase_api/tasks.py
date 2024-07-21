@@ -112,6 +112,7 @@ def predict_with_xgboost(data,timestamp, crypto_model:AbstractOHLCV, database=Da
     xgboost_model1 = app_config.xgboost_model1
     xgboost_model24 = app_config.xgboost_model24
     xgboost_model168 = app_config.xgboost_model168
+    # print(f'Input data for xgboost: {data}')
     y_pred_1 = xgboost_model1.predict(data)
     y_pred_24 = xgboost_model24.predict(data)
     y_pred_168 = xgboost_model168.predict(data)

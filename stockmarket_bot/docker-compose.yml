@@ -8,6 +8,7 @@ services:
     command: bash -c "pip install debugpy -t /tmp && python manage.py migrate && python /tmp/debugpy --wait-for-client --listen 0.0.0.0:5678 manage.py runserver 0.0.0.0:8000"
     volumes:
       - .:/app
+      - tensorboard_logs:/logs  # Mount the shared volume
     ports:
       - "8000:8000"
       - "5678:5678"
@@ -76,6 +77,17 @@ services:
     volumes:
       - historical_data:/var/lib/postgresql/data
       - ./init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
+
+  tensorboard:
+    image: tensorflow/tensorflow:latest-py3
+    command: tensorboard --logdir=/logs --host=0.0.0.0
+    volumes:
+      - tensorboard_logs:/logs  # Mount the shared volume
+    ports:
+      - "6006:6006"
+    container_name: tensorboard
+    
 volumes:
   postgres_data:
   historical_data:
+  tensorboard_logs:

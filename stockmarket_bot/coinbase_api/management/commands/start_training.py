@@ -11,6 +11,7 @@ import numpy as np
 import traceback
 
 from coinbase_api.ml_models.data_handlers.simulation_data_handler import SimulationDataHandler
+from coinbase_api.ml_models.rl_model_logging_callback import RLModelLoggingCallback
 
 class Command(BaseCommand):
     help = 'Traing the RL model for a number of iterations over the whole dataset'
@@ -39,29 +40,32 @@ class Command(BaseCommand):
         else:
             param = 100 # default value
         model_path = 'coinbase_api/ml_models/rl_model.pkl'
-        data_handler = SimulationDataHandler(total_steps=param)
-        if os.path.exists(model_path):
-            # Load the existing model
-            print('Loaded model!')
-            env = CustomEnv(data_handler=data_handler)
-            model = PPO.load(model_path, env=env, n_steps=param)
-        else:
-            # Create a new model
-            env = CustomEnv(data_handler=data_handler, total_steps=param, asymmetry_factor=0.5)
-            model = PPO("MlpPolicy", env=env, verbose=0, n_steps=param)
+        log_dir = '/logs'
+        # data_handler = SimulationDataHandler(total_steps=param)
+        intervals = [168, 336, 504, 672]  # 1 week, 2 weeks, 3 weeks, 4 weeks
+        interval_weights = [4, 3, 2, 1]   # 4x1week, 3x2weeks, 2x3weeks, 1x4weeks
+        # intervals = [168]
+        # interval_weights = [1]
+        interval_list = [interval for interval, weight in zip(intervals, interval_weights) for _ in range(weight)]
 
-        for _ in range(1):
+        for interval in interval_list:
+            print(f'Starting training with interval: {interval}')
+            env = CustomEnv(data_handler=SimulationDataHandler(total_steps=param))
+            if os.path.exists(model_path):
+                print('Loaded model!')
+                # env = CustomEnv(data_handler=data_handler)
+                model = PPO.load(model_path, env=env)
+                model.tensorboard_log = log_dir
+            else:
+                # env = CustomEnv(data_handler=data_handler, total_steps=param, asymmetry_factor=0.5)
+                model = PPO("MlpPolicy", env=env, verbose=0, tensorboard_log=log_dir)
+
+                # model.set_parameters({'n_steps': interval})
             try:
-                model.learn(total_timesteps=param, progress_bar=True, reset_num_timesteps=True)
+                model.learn(total_timesteps=interval, progress_bar=True, reset_num_timesteps=True, tb_log_name=f"ModelV1_{interval}", log_interval=1, callback=RLModelLoggingCallback())
                 model.save(model_path)
             except Exception as e:
-                print(f'exception occured: {e}: {traceback.format_exc()}')
+                print(f'exception occurred: {e}: {traceback.format_exc()}')
                 model.save(model_path)
-        # obs, reward, done, info = env.step(action)
-        # print(f'reward: {reward}')
-        # obs, reward, done, truncated, info = env.step()
-        # action, _ = model.predict(obs, deterministic=True)
-        # model.save(model_path)
-
-        # print(f'Action trying to take: {action}')
-        # action, _ = model.predict(obs, deterministic=True)
+        
+        print(f'Training completed over intervals: {interval_list}')

@@ -8,6 +8,7 @@ import numpy.typing as npt
 from ..constants import crypto_models, crypto_features, crypto_predicted_features, crypto_extra_features
 from ..enums import Actions
 
+
 class CustomEnv(gym.Env):
     def __init__(self, data_handler:AbstractDataHandler) -> None:
         super(CustomEnv, self).__init__()
@@ -21,8 +22,12 @@ class CustomEnv(gym.Env):
 
     def step(self, action) -> Tuple[npt.NDArray[np.float16], float, bool, Dict[Any, Any]]:
         next_state, cost_for_action, terminated, info = self.data_handler.update_state(action)
+        # self.next_state = next_state
+        self.state = next_state
         total_volume = next_state[0]
+        usdc = next_state[1]
         reward_q = self.data_handler.get_reward(action)
+        self.reward = reward_q
         truncated = False
         print(self.data_handler.get_current_state_output(action))
         if (total_volume < self.data_handler.initial_volume / 10):

@@ -39,6 +39,8 @@ class SimulationDataHandler(AbstractDataHandler):
         self.prediction_handler = PredictionHandler(lstm_sequence_length=100, database=self.database, timestamp=self.timestamp)
         self.prepare_simulation_database()
         self.state = self.get_current_state()
+        self.past_volumes = []
+        self.short_term_reward_window = 10
 
 
     def get_initial_crypto_prices(self) -> Dict[str, float]:
@@ -50,29 +52,19 @@ class SimulationDataHandler(AbstractDataHandler):
                 values[crypto_model.symbol] = crypto_model.default_entry(timestamp=datetime(year=2020, month=1, day=1)).close
             except AttributeError:
                 values[crypto_model.symbol] = crypto_model.default_entry(timestamp=datetime(year=2020, month=1, day=1)).close
+            except crypto_model.MultipleObjectsReturned:
+                values[crypto_model.symbol] = crypto_model.default_entry(timestamp=datetime(year=2020, month=1, day=1)).close
         return values
 
-    def get_reward_ratios_for_current_timestep(self) -> Dict[str, float]:
+    def get_reward_ratios_for_current_timestep(self, amount=5) -> Dict[str, float]:
         ratios = {}
         for crypto_model in self.crypto_models:
-            try:
-                value = crypto_model.objects.using(Database.HISTORICAL.value).filter(timestamp=self.timestamp).first().close
-            except crypto_model.DoesNotExist:
-               value = crypto_model.default_entry(timestamp=datetime(year=2020, month=1, day=1)).close # this should always be 0
-            except AttributeError:
-               value = crypto_model.default_entry(timestamp=datetime(year=2020, month=1, day=1)).close # this should always be 0
-            try:
-                ratios[crypto_model.symbol] = value / self.initial_prices[crypto_model.symbol]
-            except ZeroDivisionError:
-                ratios[crypto_model.symbol] = 0
+            value = self.get_latest_value(crypto_model)
+            initial_price = self.initial_prices.get(crypto_model.symbol, 0)
+            ratios[crypto_model.symbol] = value / initial_price if initial_price != 0 else 0
 
-        tmp = {k: v for k,v in sorted(ratios.items(), key=lambda item: -item[1])}
-        ret_map = {}
-        for idx, key in enumerate(tmp.keys()):
-            if (idx > 5):
-                break
-            ret_map[key] = tmp[key]
-        return ret_map
+        sorted_ratios = dict(sorted(ratios.items(), key=lambda item: -item[1]))
+        return {k: sorted_ratios[k] for k in list(sorted_ratios)[:amount]}
 
     def get_earliest_timestamp(self) -> datetime:
         all_information = CryptoMetadata.objects.using(Database.HISTORICAL.value).all()
@@ -120,34 +112,40 @@ class SimulationDataHandler(AbstractDataHandler):
     
     def update_state(self, action) -> Tuple[npt.NDArray[np.float16], float, bool, Dict[Any, Any]]:
         start_time = datetime.now()
-        # print(f'{self.step_count}/{self.total_steps}\tstart time:\t{start_time}')
         costs_for_action = self.cost_for_action(action) # 0.4s
-        # print(f'{self.step_count}/{self.total_steps}\tcosts for action:\t{datetime.now() - start_time}')
-        buy_indices = [(idx, i) for idx, i in enumerate(action) if i > self.action_factor]
+        buy_indices = [(idx, i) for idx, i in enumerate(action) if i > self.action_factor and self.crypto_models[idx].symbol != 'USDT']
         sell_indices = [(idx, i) for idx, i in enumerate(action) if i < -self.action_factor]
-        # print(f'{self.step_count}/{self.total_steps}\tgetting indices:\t{datetime.now() - start_time}')
-        # perform buy actions on DB
-        # 3-4s
-        # Perform buy actions
+
+        usdt_action = action[self.crypto_models.index(next(cm for cm in self.crypto_models if cm.symbol == 'USDT'))]
+        hold_usdc = usdt_action < 0
+        
+        # Perform buy actions on DB
         usdc_account = self.get_crypto_account('USDC')
-        individual_liquidity = (self.get_liquidity() - sum(costs_for_action)) / len(buy_indices) if len(buy_indices) > 0 else 0
+        available_liquidity = self.get_liquidity() - sum(costs_for_action)
+        
+        # Select top N cryptocurrencies for buying
+        N = 5  # You can adjust this number based on your preference
+        top_buy_indices = sorted(buy_indices, key=lambda x: -x[1])[:N]
+        
+        # Distribute liquidity among the top N cryptocurrencies
+        total_buy_actions = sum([self.map_buy_action(buy_action, self.action_factor) for idx, buy_action in top_buy_indices])
+        individual_liquidity = available_liquidity / total_buy_actions if total_buy_actions > 0 else 0
+    
         crypto_updates:List[Account] = []
         usdc_updates:List[Account] = []
+        if (not hold_usdc): # only buy when allowed
+            for idx, buy_action in top_buy_indices:
+                crypto_model = self.crypto_models[idx]
+                crypto_account = self.get_crypto_account(crypto_model.symbol)
+                cost_for_action = costs_for_action[idx]
+                buy_action_mapped = self.map_buy_action(buy_action, self.action_factor)
+                crypto_value = crypto_model.objects.using(self.database).latest('timestamp').close
+                buy_amount = individual_liquidity * buy_action_mapped if crypto_value else 0
+                crypto_account.value += (buy_amount - cost_for_action) / crypto_value if crypto_value else 0
+                usdc_account.value -= buy_amount
+                crypto_updates.append(crypto_account)
+                usdc_updates.append(usdc_account)
 
-        for idx, buy_action in buy_indices:
-            crypto_model = self.crypto_models[idx]
-            crypto_account = self.get_crypto_account(crypto_model.symbol)
-            cost_for_action = costs_for_action[idx]
-            buy_action_mapped = self.map_buy_action(buy_action, self.action_factor)
-            crypto_value = crypto_model.objects.using(self.database).latest('timestamp').close
-            buy_amount = individual_liquidity * buy_action_mapped if crypto_value else 0
-            crypto_account.value += (buy_amount - cost_for_action) / crypto_value if crypto_value else 0
-            usdc_account.value -= buy_amount
-            crypto_updates.append(crypto_account)
-            usdc_updates.append(usdc_account)
-
-        # print(f'{self.step_count}/{self.total_steps}\tbuy indices:\t{datetime.now() - start_time}')
-        # Perform sell actions
         for idx, sell_action in sell_indices:
             crypto_model = self.crypto_models[idx]
             crypto_account = self.get_crypto_account(crypto_model.symbol)
@@ -160,23 +158,13 @@ class SimulationDataHandler(AbstractDataHandler):
             crypto_updates.append(crypto_account)
             usdc_updates.append(usdc_account)
 
-        # print(f'updates:')
-        # for crypto_acc in crypto_updates:
-        #     print(f'\t{crypto_acc.currency}:\t{crypto_acc.value}')
-        # print(f'updates:')
-        # for crypto_acc in usdc_updates:
-        #     print(f'\t{crypto_acc.currency}:\t{crypto_acc.value}')
         # Bulk save updates
         with transaction.atomic(using=self.database):
             Account.objects.using(self.database).bulk_update(crypto_updates, ['value'])
             Account.objects.using(self.database).bulk_update(usdc_updates, ['value'])
-        # print(f'{self.step_count}/{self.total_steps}\tsell indices:\t{datetime.now() - start_time}')
         new_timestamp = self.timestamp + timedelta(hours=1)
         done = False
-        # fetching new crypto data
-        # 3-4s
-        # Fetch new crypto data in bulk
-        # Fetch new crypto data in bulk and prepare for bulk creation
+        
         new_data_instances = []
         for crypto in self.crypto_models:
             historical_data = crypto.objects.using(Database.HISTORICAL.value).filter(timestamp=new_timestamp).first()
@@ -190,41 +178,70 @@ class SimulationDataHandler(AbstractDataHandler):
         with transaction.atomic(using=self.database):
             for crypto_model, instances in zip(self.crypto_models, new_data_instances):
                 crypto_model.objects.using(self.database).bulk_create(instances)
-        # print(f'{self.step_count}/{self.total_steps}\tnew data:\t{datetime.now() - start_time}')
-        # 30-45s
-        # make new predictions
         self.prediction_handler.timestamp = new_data.timestamp
         self.timestamp = new_timestamp
         self.prediction_handler.predict() # 33s
-        # print(f'{self.step_count}/{self.total_steps}\tpredict:\t{datetime.now() - start_time}')
         self.state = self.get_current_state() # 2s
-        # self.volume_decay(factor=0.0005)
+        self.past_volumes.append(self.total_volume)
+        if len(self.past_volumes) > self.short_term_reward_window:
+            self.past_volumes.pop(0)
         print(f'{self.step_count}/{self.total_steps}\tend time:\t{datetime.now() - start_time}')
         self.step_count += 1
         info = {}
         return self.state, sum(costs_for_action), done, info
 
-    def get_liquidity_string(self) -> str:
+    def get_current_state_output(self, action) -> str:
+        reward_q = self.get_reward(action)
+        reward_ratios = self.get_reward_ratios_for_current_timestep()
+        reward_string = f'gain: {self.total_volume / 1000:.3f},'
+        
+        for key, value in reward_ratios.items():
+            crypto_model = self.get_crypto_model_by_symbol(key)
+            reward_string += self.get_output_for_crypto(crypto_model, value)
+        
+        cost = sum(self.cost_for_action(action))
+        liquidity_string = self.get_liquidity_string(self.get_reward_ratios_for_current_timestep(len(self.crypto_models)))
+        
+        return f"\n\n\n{self.get_step_count()}/{self.get_total_steps()}: time: {self.timestamp}\n\tcurrent volume: {self.total_volume:.2f}\n\tusdc: {self.usdc_held:.2f}\n\treward {reward_q:.2f}\n\tcost: {cost:.2f}\n\t{reward_string}\n\tcryptos: {liquidity_string}"
+
+    def get_liquidity_string(self, reward_ratios: Dict[str, float]) -> str:
+        crypto_model_values = {
+            crypto_model.symbol: self.get_crypto_account_value(crypto_model)
+            for crypto_model in self.crypto_models
+        }
+
+        sorted_crypto_values = dict(sorted(crypto_model_values.items(), key=lambda item: -item[1][0] * item[1][1]))
+
         ret_string = ''
-        crypto_model_values = {}
-        for crypto_model in crypto_models:
-            try:
-                crypto_account_value = self.get_crypto_account(crypto_model.symbol).value
-            except Account.DoesNotExist:
-                crypto_account_value = 0
-            try:
-                value = crypto_model.objects.using(self.database).latest("timestamp").close
-            except crypto_model.DoesNotExist:
-                value = 0
-            except AttributeError:
-                value = 0
-            crypto_model_values[crypto_model.symbol]= [crypto_account_value, value]
-        tmp = {k: v for k,v in sorted(crypto_model_values.items(), key=lambda item: -item[1][1]*item[1][0])}
-        for idx, (key, val) in enumerate(tmp.items()):
-            ret_string += f'\n\t\t{key}:\t{val[0]:.2f}=\t{val[0]*val[1]:.2f}'
-            if (idx > 5):
+        for idx, (symbol, (account_value, price)) in enumerate(sorted_crypto_values.items()):
+            crypto_model = self.get_crypto_model_by_symbol(symbol)
+            # TODO: Why does this sometimes return 0, i.e. on the cryptos with most value part??
+            reward_ratio = reward_ratios.get(symbol, 0)
+            ret_string += self.get_output_for_crypto(crypto_model, reward_ratio, account_value, price)
+            if idx > 5:
                 break
+    
         return ret_string
+    
+    def get_latest_value(self, crypto_model: AbstractOHLCV) -> float:
+        try:
+            return crypto_model.objects.using(Database.HISTORICAL.value).filter(timestamp=self.timestamp).first().close
+        except (crypto_model.DoesNotExist, AttributeError):
+            return crypto_model.default_entry(timestamp=datetime(year=2020, month=1, day=1)).close
+    
+    def get_crypto_model_by_symbol(self, symbol: str):
+        return next(crypto for crypto in self.crypto_models if crypto.symbol == symbol)
+    
+    def get_crypto_account_value(self, crypto_model: AbstractOHLCV) -> Tuple[float, float]:
+        try:
+            account_value = self.get_crypto_account(crypto_model.symbol).value
+        except Account.DoesNotExist:
+            account_value = 0
+        try:
+            price = crypto_model.objects.using(self.database).latest("timestamp").close
+        except (crypto_model.DoesNotExist, AttributeError):
+            price = 0
+        return account_value, price
     
     def volume_decay(self, factor:float=0.002) -> None:
         for crypto_model in crypto_models:
@@ -450,15 +467,35 @@ class SimulationDataHandler(AbstractDataHandler):
     def get_total_steps(self) -> int:
         return self.total_steps
     
-    def get_current_state_output(self, action) -> str:
-        reward_q = self.get_reward(action)
-        reward_ratios = self.get_reward_ratios_for_current_timestep()
-        reward_string = f'gain: {self.total_volume/1000:.3f},'
-        for key in reward_ratios:
-            reward_string = reward_string + f'\n\t\t{key}:\t{reward_ratios[key]:.3f}'
-        return f"\n\n\n{self.get_step_count()}/{self.get_total_steps()}: time: {self.timestamp}\n\tcurrent volume: {self.total_volume:.2f}\n\tusdc: {self.usdc_held:.2f}\n\treward {reward_q:.2f}\n\tcost: {sum(self.cost_for_action(action)):.2f}\n\t{reward_string}\n\tcryptos: {self.get_liquidity_string()}"
+    # def get_current_state_output(self, action) -> str:
+    #     reward_q = self.get_reward(action)
+    #     reward_ratios = self.get_reward_ratios_for_current_timestep()
+    #     reward_string = f'gain: {self.total_volume/1000:.3f},'
+    #     for key in reward_ratios:
+    #         crypto_model = [crypto for crypto in crypto_models if crypto.symbol == key][0]
+    #         reward_string = reward_string + self.get_output_for_crypto(reward_ratios=reward_ratios, crypto_model=crypto_model)
+    #     return f"\n\n\n{self.get_step_count()}/{self.get_total_steps()}: time: {self.timestamp}\n\tcurrent volume: {self.total_volume:.2f}\n\tusdc: {self.usdc_held:.2f}\n\treward {reward_q:.2f}\n\tcost: {sum(self.cost_for_action(action)):.2f}\n\t{reward_string}\n\tcryptos: {self.get_liquidity_string()}"
+    
         
-    def get_reward(self, action: Actions)-> float:
-        reward = ((self.total_volume / self.initial_volume) - 1)*3
-        cost_for_action = sum(self.cost_for_action(action))
-        return reward - cost_for_action*0.25 #! not full scope since this would scale awkwardly. Cost = 4 usdc = -4, which is not reachable the other way around
+    def get_output_for_crypto(self, crypto_model: AbstractOHLCV, reward_ratio, account_value=None, price=None) -> str:
+        if account_value is None or price is None:
+            account_value, price = self.get_crypto_account_value(crypto_model)
+        return f'\n\t\t{crypto_model.symbol}:\t{account_value:.2f} =\t{account_value * price:.2f} (reward ratio: {reward_ratio:.2f})'
+        
+    def get_reward(self, action: Actions) -> float:
+        net_return = (self.total_volume / self.initial_volume) - 1
+        reward = net_return * 3  # Scale the reward as needed
+        asymmetry_factor = 2.0  # Adjust this factor to control asymmetry
+
+        # Apply asymmetry: rewards positive returns more than penalizing negative returns
+        if reward > 0:
+            reward *= asymmetry_factor
+            reward += 0.5
+
+        if len(self.past_volumes) >= self.short_term_reward_window:
+            past_volume = self.past_volumes[-self.short_term_reward_window]
+            if self.total_volume > past_volume:
+                short_term_gain = (self.total_volume - past_volume) / past_volume
+                reward += short_term_gain
+                
+        return reward 

@@ -31,7 +31,7 @@ class RealDataHandler(AbstractDataHandler):
         done = False
         info = {}
         self.next_state = self.get_current_state()
-        print(f'updating state to {self.next_state}')
+        # print(f'updating state to {self.next_state}')
         return self.next_state, sum(self.costs_for_action), done, info
     
     def reset_state(self) -> npt.NDArray[np.float16]:
