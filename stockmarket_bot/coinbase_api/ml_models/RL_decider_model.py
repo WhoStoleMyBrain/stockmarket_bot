@@ -10,10 +10,11 @@ from ..enums import Actions
 
 
 class CustomEnv(gym.Env):
-    def __init__(self, data_handler:AbstractDataHandler) -> None:
+    def __init__(self, data_handler:AbstractDataHandler, transaction_cost_factor=1.0) -> None:
         super(CustomEnv, self).__init__()
         self.crypto_models = crypto_models
         self.data_handler = data_handler
+        self.transaction_cost_factor = transaction_cost_factor
         N = len(self.crypto_models)
         self.action_space = spaces.Box(low=-1, high=1, shape=(N,), dtype=np.float32)  # where N is the number of cryptocurrencies
         M = len(self.get_crypto_features()) + len(self.get_crypto_predicted_features()) + len(self.get_extra_features())
@@ -25,7 +26,7 @@ class CustomEnv(gym.Env):
         # self.next_state = next_state
         self.state = next_state
         total_volume = next_state[0]
-        usdc = next_state[1]
+        # usdc = next_state[1]
         reward_q = self.data_handler.get_reward(action)
         self.reward = reward_q
         truncated = False

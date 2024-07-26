@@ -13,6 +13,7 @@ from stockmarket_bot.celery import app
 import json
 from torch import no_grad
 from coinbase_api.constants import crypto_models
+from django.db import transaction
 
 
 def last_full_hour(date_time):
@@ -84,62 +85,64 @@ def store_data(crypto_model, data, database=Database.DEFAULT.value):
         crypto_model.objects.using(database).bulk_create(entries)
     except Exception as e:
         print(f'Encountered the following error: {e}')
+        
 @app.task
-def predict_with_lstm(data, timestamp, crypto_model:AbstractOHLCV, database=Database.DEFAULT.value):
-    # print(f'start trying to predict with lstm on database: {database}...')
+def predict_with_lstm(data, timestamp, crypto_model: AbstractOHLCV, database=Database.DEFAULT.value):
     lstm_model = apps.get_app_config('coinbase_api').lstm_model
     with no_grad():
         output = lstm_model(data)
         probs = output.tolist()
-    # print(f'probs: {probs}')
+    
+    predictions = []
     for idx, item in enumerate(probs[0]):
-        # print(idx, item)
-        # save the prediction
-        Prediction.objects.using(database).create(
-            timestamp_predicted_for=timestamp,
-            model_name='LSTM',
-            predicted_field=f'close_higher_shifted_{1 if idx == 0 else 24 if idx==1 else 168}h',
-            crypto=crypto_model.__name__,
-            predicted_value=item
+        predictions.append(
+            Prediction(
+                timestamp_predicted_for=timestamp,
+                model_name='LSTM',
+                predicted_field=f'close_higher_shifted_{1 if idx == 0 else 24 if idx == 1 else 168}h',
+                crypto=crypto_model.__name__,
+                predicted_value=item
+            )
         )
-
-
+    with transaction.atomic(using=database):
+        Prediction.objects.using(database).bulk_create(predictions)
+    
 @app.task
-def predict_with_xgboost(data,timestamp, crypto_model:AbstractOHLCV, database=Database.DEFAULT.value):
-    # ... logic to predict using XGBoost model ...
-    # print(f'start trying to predict with xgboost on database: {database}...')
+def predict_with_xgboost(data, timestamp, crypto_model: AbstractOHLCV, database=Database.DEFAULT.value):
+    start_time = datetime.now()
     app_config = apps.get_app_config('coinbase_api')
     xgboost_model1 = app_config.xgboost_model1
     xgboost_model24 = app_config.xgboost_model24
     xgboost_model168 = app_config.xgboost_model168
-    # print(f'Input data for xgboost: {data}')
+    
     y_pred_1 = xgboost_model1.predict(data)
     y_pred_24 = xgboost_model24.predict(data)
     y_pred_168 = xgboost_model168.predict(data)
-    # print(f'len data: {data.num_row()}')
-    # print(f'data: {data}')
-    # print(f'y_pred_1: {len(y_pred_1)}')
-    # print(f'y_pred_24: {len(y_pred_24)}')
-    # print(f'y_pred_168: {len(y_pred_168)}')
-    # save the prediction
-    Prediction.objects.using(database).create(
-        timestamp_predicted_for=timestamp,
-        model_name='XGBoost',
-        predicted_field='close_higher_shifted_1h',
-        crypto = crypto_model.__name__,
-        predicted_value=y_pred_1
-    )
-    Prediction.objects.using(database).create(
-        timestamp_predicted_for=timestamp,
-        model_name='XGBoost',
-        predicted_field='close_higher_shifted_24h',
-        crypto = crypto_model.__name__,
-        predicted_value=y_pred_24
-    )
-    Prediction.objects.using(database).create(
-        timestamp_predicted_for=timestamp,
-        model_name='XGBoost',
-        predicted_field='close_higher_shifted_168h',
-        crypto = crypto_model.__name__,
-        predicted_value=y_pred_168
-    )
+    
+    predictions = [
+        Prediction(
+            timestamp_predicted_for=timestamp,
+            model_name='XGBoost',
+            predicted_field='close_higher_shifted_1h',
+            crypto=crypto_model.__name__,
+            predicted_value=y_pred_1
+        ),
+        Prediction(
+            timestamp_predicted_for=timestamp,
+            model_name='XGBoost',
+            predicted_field='close_higher_shifted_24h',
+            crypto=crypto_model.__name__,
+            predicted_value=y_pred_24
+        ),
+        Prediction(
+            timestamp_predicted_for=timestamp,
+            model_name='XGBoost',
+            predicted_field='close_higher_shifted_168h',
+            crypto=crypto_model.__name__,
+            predicted_value=y_pred_168
+        )
+    ]
+
+    with transaction.atomic(using=database):
+        Prediction.objects.using(database).bulk_create(predictions)
+        

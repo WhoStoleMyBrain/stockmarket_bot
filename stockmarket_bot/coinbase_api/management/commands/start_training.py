@@ -42,15 +42,16 @@ class Command(BaseCommand):
         model_path = 'coinbase_api/ml_models/rl_model.pkl'
         log_dir = '/logs'
         # data_handler = SimulationDataHandler(total_steps=param)
-        intervals = [168, 336, 504, 672]  # 1 week, 2 weeks, 3 weeks, 4 weeks
-        interval_weights = [4, 3, 2, 1]   # 4x1week, 3x2weeks, 2x3weeks, 1x4weeks
-        # intervals = [168]
-        # interval_weights = [1]
+        # intervals = [168, 336, 504, 672]  # 1 week, 2 weeks, 3 weeks, 4 weeks
+        # interval_weights = [4, 3, 2, 1]   # 4x1week, 3x2weeks, 2x3weeks, 1x4weeks
+        intervals = [168]
+        interval_weights = [1]
+        interval_transaction_costs = 0.0
         interval_list = [interval for interval, weight in zip(intervals, interval_weights) for _ in range(weight)]
 
         for interval in interval_list:
             print(f'Starting training with interval: {interval}')
-            env = CustomEnv(data_handler=SimulationDataHandler(total_steps=param))
+            env = CustomEnv(data_handler=SimulationDataHandler(total_steps=interval, transaction_cost_factor=interval_transaction_costs))
             if os.path.exists(model_path):
                 print('Loaded model!')
                 # env = CustomEnv(data_handler=data_handler)
@@ -62,7 +63,7 @@ class Command(BaseCommand):
 
                 # model.set_parameters({'n_steps': interval})
             try:
-                model.learn(total_timesteps=interval, progress_bar=True, reset_num_timesteps=True, tb_log_name=f"ModelV1_{interval}", log_interval=1, callback=RLModelLoggingCallback())
+                model.learn(total_timesteps=interval, progress_bar=True, reset_num_timesteps=True, tb_log_name=f"ModelV1_{interval}_{interval_transaction_costs}", log_interval=1, callback=RLModelLoggingCallback())
                 model.save(model_path)
             except Exception as e:
                 print(f'exception occurred: {e}: {traceback.format_exc()}')

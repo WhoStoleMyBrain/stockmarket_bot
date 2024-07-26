@@ -15,9 +15,10 @@ import concurrent.futures
 from django.db import transaction, connection
 
 class SimulationDataHandler(AbstractDataHandler):
-    def __init__(self, initial_volume = 1000, total_steps = 1024) -> None:
+    def __init__(self, initial_volume = 1000, total_steps = 1024, transaction_cost_factor=1.0) -> None:
         self.initial_timestamp = None
         self.total_steps = total_steps
+        self.transaction_cost_factor = transaction_cost_factor
         self.action_factor = 0.5
         self.step_count = 0
         self.usdc_held = 0
@@ -36,12 +37,20 @@ class SimulationDataHandler(AbstractDataHandler):
         self.initial_timestamp = self.get_starting_timestamp()
         self.timestamp = self.initial_timestamp
         self.initial_prices = self.get_initial_crypto_prices()
-        self.prediction_handler = PredictionHandler(lstm_sequence_length=100, database=self.database, timestamp=self.timestamp)
         self.prepare_simulation_database()
+        self.prepare_predictions()
         self.state = self.get_current_state()
         self.past_volumes = []
         self.short_term_reward_window = 10
 
+    def prepare_predictions(self):
+        # refactored from prepare_simulation_data_handling for consistency issues
+        self.prediction_handler = PredictionHandler(lstm_sequence_length=100, database=self.database, timestamp=self.timestamp)
+        # 1. Delete all predictions and crypto model entries
+        print(f'Deleting predictions')
+        self.prediction_handler.restore_prediction_database()
+        # 4. Get initial predictions in
+        self.prediction_handler.predict()
 
     def get_initial_crypto_prices(self) -> Dict[str, float]:
         values = {}
@@ -283,8 +292,9 @@ class SimulationDataHandler(AbstractDataHandler):
         self.initial_timestamp = self.get_starting_timestamp()
         self.timestamp = self.initial_timestamp
         self.initial_prices = self.get_initial_crypto_prices()
-        self.prediction_handler = PredictionHandler(lstm_sequence_length=100, database=self.database, timestamp=self.timestamp)
         self.prepare_simulation_database()
+        self.prepare_predictions()
+        # self.prediction_handler = PredictionHandler(lstm_sequence_length=100, database=self.database, timestamp=self.timestamp)
         self.initial_state = self.get_current_state()
         return self.initial_state
     
@@ -305,7 +315,7 @@ class SimulationDataHandler(AbstractDataHandler):
             except Account.DoesNotExist:
                 continue
             fee_rate = self.maker_fee if is_buy else self.taker_fee  # Assuming maker fee for buy, taker fee for sell
-            transaction_cost = transaction_volume * fee_rate
+            transaction_cost = transaction_volume * fee_rate * self.transaction_cost_factor
             all_costs.append(transaction_cost)
         return all_costs
     
@@ -356,10 +366,6 @@ class SimulationDataHandler(AbstractDataHandler):
     def prepare_simulation_database(self) -> None:
         print(f'Preparing simulation.')
 
-        # 1. Delete all predictions and crypto model entries
-        print(f'Deleting predictions')
-        self.prediction_handler.restore_prediction_database()
-
         # Function to delete and recreate data for a single crypto model
         def process_crypto_model(crypto_model: AbstractOHLCV):
             # print(f'Deleting model data for {crypto_model.symbol}')
@@ -400,8 +406,7 @@ class SimulationDataHandler(AbstractDataHandler):
                         connection.close()
         # 3. Prepare the account database
         self.reset_account_data()
-        # 4. Get initial predictions in
-        self.prediction_handler.predict()
+        
 
 
     def reset_account_data(self) -> None:
@@ -484,18 +489,20 @@ class SimulationDataHandler(AbstractDataHandler):
         
     def get_reward(self, action: Actions) -> float:
         net_return = (self.total_volume / self.initial_volume) - 1
-        reward = net_return * 3  # Scale the reward as needed
+        reward = net_return * 0.1  # Scale the reward as needed
+        # reward = net_return * 3  # Scale the reward as needed
         asymmetry_factor = 2.0  # Adjust this factor to control asymmetry
 
         # Apply asymmetry: rewards positive returns more than penalizing negative returns
         if reward > 0:
             reward *= asymmetry_factor
-            reward += 0.5
+            # reward += 0.5
 
         if len(self.past_volumes) >= self.short_term_reward_window:
-            past_volume = self.past_volumes[-self.short_term_reward_window]
-            if self.total_volume > past_volume:
-                short_term_gain = (self.total_volume - past_volume) / past_volume
-                reward += short_term_gain
+            past_volume = np.sum(self.past_volumes[-self.short_term_reward_window:])/self.short_term_reward_window
+            # if self.total_volume > past_volume:
+            short_term_gain = (self.total_volume - past_volume) / past_volume
+            reward += short_term_gain * 5
+        reward *= 5
                 
         return reward 

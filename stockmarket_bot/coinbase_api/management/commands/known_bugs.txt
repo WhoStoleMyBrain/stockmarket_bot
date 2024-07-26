@@ -12,7 +12,7 @@
 -----build a pool of x random timeframes, then pull from that pool until is is empty. when empty, recreate pool.
 -----    -> necessary for permanent flow using the other pc
 
-refactor into pd dataframe the whole time. only need one more column on each step, and not re-fetch the whole lstm sequence length
+-----refactor into pd dataframe the whole time. only need one more column on each step, and not re-fetch the whole lstm sequence length
 
 somehow the total value sometimes jumps a lot, first down and then it recovers quickly. This has to be a bug in the calculations
 
