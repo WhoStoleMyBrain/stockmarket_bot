@@ -138,11 +138,40 @@ class SimulationDataHandler(AbstractDataHandler):
         return self.initial_timestamp
 
     def get_current_state(self) -> npt.NDArray[np.float16]:
-        self.total_volume = calculate_total_volume(database=self.database)
-        self.account_holdings = self.get_account_holdings()
+        start_time = time.time()
+        
+        self.total_volume, self.account_holdings, self.usdc_held = self.get_account_and_volume_info()
         self.new_crypto_data = self.get_new_crypto_data()
-        self.usdc_held = self.get_liquidity()
+        
+        end_time = time.time()
+        print(f"get_current_state took {end_time - start_time:.2f} seconds")
+        
         return np.array([self.total_volume, self.usdc_held] + self.account_holdings + self.new_crypto_data)
+
+    def get_account_and_volume_info(self) -> Tuple[float, List[float], float]:
+        total_volume = 0.0
+        account_holdings = []
+        usdc_held = 0.0
+        
+        accounts = Account.objects.using(self.database).filter(
+            name__in=[f'{crypto.symbol} Wallet' for crypto in self.crypto_models] + ['USDC Wallet']
+        ).select_related()
+        
+        crypto_prices = {
+            crypto.symbol: crypto.objects.using(self.database).latest('timestamp').close for crypto in self.crypto_models
+        }
+        
+        for account in accounts:
+            if account.name == 'USDC Wallet':
+                usdc_held = account.value
+                total_volume += usdc_held
+            else:
+                symbol = account.name.split()[0]
+                price = crypto_prices.get(symbol, 0)
+                total_volume += account.value * price
+                account_holdings.append(account.value)
+        
+        return total_volume, account_holdings, usdc_held
 
     def map_buy_action(self, buy_action: float, action_factor: float) -> float:
         return (buy_action - action_factor) / (1 - action_factor)
@@ -422,23 +451,20 @@ class SimulationDataHandler(AbstractDataHandler):
     def crypto_to_list(self, crypto: AbstractOHLCV) -> List[float]:
         return [getattr(crypto, fieldname) for fieldname in self.get_crypto_features()]
 
-    def get_new_prediction_data(self, crypto_model: AbstractOHLCV, timestamp: datetime) -> List[float]:
-        all_entries = []
-        ml_models = ['LSTM', 'XGBoost']
-        prediction_shifts = [1, 24, 168]
-        for model in ml_models:
-            for prediction_shift in prediction_shifts:
-                try:
-                    entry = Prediction.objects.using(self.database).get(
-                        crypto=crypto_model.__name__,
-                        timestamp_predicted_for=timestamp,
-                        model_name=model,
-                        predicted_field=f'close_higher_shifted_{prediction_shift}h'
-                    )
-                    all_entries.append(entry.predicted_value)
-                except Prediction.DoesNotExist:
-                    print(f'Prediction {crypto_model.__name__}, {timestamp}, {model}, close_higher_shifted_{prediction_shift}h Does not exist')
-                    all_entries.append(0.0)
+    def get_new_prediction_data(self, timestamp: datetime) -> Dict[str, List[float]]:
+        all_entries = {crypto.symbol: [0.0] * 6 for crypto in self.crypto_models}
+        
+        predictions = Prediction.objects.using(self.database).filter(
+            timestamp_predicted_for=timestamp,
+            model_name__in=['LSTM', 'XGBoost'],
+            predicted_field__in=['close_higher_shifted_1h', 'close_higher_shifted_24h', 'close_higher_shifted_168h']
+        )
+        
+        for prediction in predictions:
+            index = 0 if prediction.predicted_field == 'close_higher_shifted_1h' else 1 if prediction.predicted_field == 'close_higher_shifted_24h' else 2
+            index += 0 if prediction.model_name == 'LSTM' else 3
+            all_entries[prediction.crypto][index] = prediction.predicted_value
+        
         return all_entries
 
     def prepare_simulation_database(self) -> None:
@@ -528,10 +554,13 @@ class SimulationDataHandler(AbstractDataHandler):
 
     def get_new_crypto_data(self) -> List[float]:
         all_entries = []
+        prediction_data = self.get_new_prediction_data(self.timestamp)
+        
         for crypto in self.crypto_models:
             crypto_latest = self.get_crypto_data_from_cache(crypto.symbol, self.timestamp)
-            all_entries = all_entries + self.crypto_to_list(crypto_latest)
-            all_entries = all_entries + self.get_new_prediction_data(crypto, crypto_latest.timestamp)
+            all_entries.extend(self.crypto_to_list(crypto_latest))
+            all_entries.extend(prediction_data[crypto.symbol])
+        
         return all_entries
 
     def get_step_count(self) -> int:

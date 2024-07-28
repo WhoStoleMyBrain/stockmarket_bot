@@ -100,7 +100,7 @@ def predict_with_lstm(data, timestamp, crypto_model: AbstractOHLCV, predictions:
                 timestamp_predicted_for=timestamp,
                 model_name='LSTM',
                 predicted_field=f'close_higher_shifted_{1 if idx == 0 else 24 if idx == 1 else 168}h',
-                crypto=crypto_model.__name__,
+                crypto=crypto_model.symbol,
                 predicted_value=item
             )
         )
@@ -124,7 +124,7 @@ def predict_with_xgboost(data, timestamp, crypto_model: AbstractOHLCV, predictio
             timestamp_predicted_for=timestamp,
             model_name='XGBoost',
             predicted_field='close_higher_shifted_1h',
-            crypto=crypto_model.__name__,
+            crypto=crypto_model.symbol,
             predicted_value=y_pred_1
         ))
     predictions.append(
@@ -132,7 +132,7 @@ def predict_with_xgboost(data, timestamp, crypto_model: AbstractOHLCV, predictio
             timestamp_predicted_for=timestamp,
             model_name='XGBoost',
             predicted_field='close_higher_shifted_24h',
-            crypto=crypto_model.__name__,
+            crypto=crypto_model.symbol,
             predicted_value=y_pred_24
         ))
     predictions.append(
@@ -140,7 +140,7 @@ def predict_with_xgboost(data, timestamp, crypto_model: AbstractOHLCV, predictio
             timestamp_predicted_for=timestamp,
             model_name='XGBoost',
             predicted_field='close_higher_shifted_168h',
-            crypto=crypto_model.__name__,
+            crypto=crypto_model.symbol,
             predicted_value=y_pred_168
         ))
     
