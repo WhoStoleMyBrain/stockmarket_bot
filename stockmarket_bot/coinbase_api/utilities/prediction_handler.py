@@ -7,8 +7,8 @@ import pandas as pd
 import torch
 import xgboost as xgb
 from sklearn.preprocessing import StandardScaler
-from datetime import datetime, timedelta
 import time
+from django.db import transaction
 
 class PredictionHandler:
     def __init__(self, lstm_sequence_length=100, database=Database.DEFAULT.value, timestamp=None) -> None:
@@ -21,7 +21,7 @@ class PredictionHandler:
         start_time = time.time()
         interval_times = {"Process LSTM Data": 0, "Process XGBoost Data": 0, "LSTM Prediction": 0, "XGBoost Prediction": 0}
         interval_counts = {"Process LSTM Data": 0, "Process XGBoost Data": 0, "LSTM Prediction": 0, "XGBoost Prediction": 0}
-
+        predictions = []
         for crypto_model in self.crypto_models:
             symbol_data = dataframes[crypto_model.symbol]
             if len(symbol_data) < self.lstm_sequence_length:
@@ -39,14 +39,21 @@ class PredictionHandler:
             interval_counts["Process XGBoost Data"] += 1
 
             interval_start = time.time()
-            self._try_predict(predict_with_lstm, 'lstm', {'data': dataframe_lstm, 'timestamp': self.timestamp, 'crypto_model': crypto_model, 'database': self.database})
+            
+            self._try_predict(predict_with_lstm, 'lstm', {'data': dataframe_lstm, 'timestamp': self.timestamp, 'crypto_model': crypto_model, 'predictions': predictions, 'database': self.database})
             interval_times["LSTM Prediction"] += time.time() - interval_start
             interval_counts["LSTM Prediction"] += 1
 
             interval_start = time.time()
-            self._try_predict(predict_with_xgboost, 'XGBoost', {'data': dataframe_xgboost, 'timestamp': self.timestamp, 'crypto_model': crypto_model, 'database': self.database})
+            self._try_predict(predict_with_xgboost, 'XGBoost', {'data': dataframe_xgboost, 'timestamp': self.timestamp, 'crypto_model': crypto_model, 'predictions': predictions, 'database': self.database})
             interval_times["XGBoost Prediction"] += time.time() - interval_start
             interval_counts["XGBoost Prediction"] += 1
+        interval_start = time.time()
+        interval_counts["Updating db"] = 1
+        with transaction.atomic(using=self.database):
+            Prediction.objects.using(self.database).bulk_create(predictions)
+        interval_times["Updating db"] = time.time() - interval_start
+            
 
         end_time = time.time()
         total_time = end_time - start_time

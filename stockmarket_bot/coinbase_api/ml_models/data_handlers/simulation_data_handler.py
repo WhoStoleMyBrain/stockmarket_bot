@@ -186,7 +186,7 @@ class SimulationDataHandler(AbstractDataHandler):
         interval_start = time.time()
         crypto_updates: List[Account] = []
         usdc_updates: List[Account] = []
-        print(f'holding with usdt action: {hold_usdc}:{usdt_action}')
+        # print(f'holding with usdt action: {hold_usdc}:{usdt_action}')
         if not hold_usdc:
             for idx, buy_action in top_buy_indices:
                 crypto_model = self.crypto_models[idx]

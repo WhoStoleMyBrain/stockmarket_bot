@@ -1,10 +1,11 @@
 
 from datetime import datetime, timedelta
+from typing import List
 from django.utils.timezone import make_aware, make_naive
 from django.apps import apps
 
 from coinbase_api.enums import Database
-from .models.models import AbstractOHLCV, Bitcoin, Ethereum, Polkadot, Prediction
+from .models.models import AbstractOHLCV, Prediction
 # from .cb_auth import Granularities
 from .enums import Granularities
 from .utilities.utils import cb_fetch_product_candles
@@ -13,7 +14,6 @@ from stockmarket_bot.celery import app
 import json
 from torch import no_grad
 from coinbase_api.constants import crypto_models
-from django.db import transaction
 
 
 def last_full_hour(date_time):
@@ -87,13 +87,13 @@ def store_data(crypto_model, data, database=Database.DEFAULT.value):
         print(f'Encountered the following error: {e}')
         
 @app.task
-def predict_with_lstm(data, timestamp, crypto_model: AbstractOHLCV, database=Database.DEFAULT.value):
+def predict_with_lstm(data, timestamp, crypto_model: AbstractOHLCV, predictions:List[Prediction], database=Database.DEFAULT.value):
     lstm_model = apps.get_app_config('coinbase_api').lstm_model
     with no_grad():
         output = lstm_model(data)
         probs = output.tolist()
     
-    predictions = []
+    # predictions = []
     for idx, item in enumerate(probs[0]):
         predictions.append(
             Prediction(
@@ -104,12 +104,12 @@ def predict_with_lstm(data, timestamp, crypto_model: AbstractOHLCV, database=Dat
                 predicted_value=item
             )
         )
-    with transaction.atomic(using=database):
-        Prediction.objects.using(database).bulk_create(predictions)
+    # with transaction.atomic(using=database):
+    #     Prediction.objects.using(database).bulk_create(predictions)
     
 @app.task
-def predict_with_xgboost(data, timestamp, crypto_model: AbstractOHLCV, database=Database.DEFAULT.value):
-    start_time = datetime.now()
+def predict_with_xgboost(data, timestamp, crypto_model: AbstractOHLCV, predictions:List[Prediction], database=Database.DEFAULT.value):
+    # start_time = datetime.now()
     app_config = apps.get_app_config('coinbase_api')
     xgboost_model1 = app_config.xgboost_model1
     xgboost_model24 = app_config.xgboost_model24
@@ -119,30 +119,32 @@ def predict_with_xgboost(data, timestamp, crypto_model: AbstractOHLCV, database=
     y_pred_24 = xgboost_model24.predict(data)
     y_pred_168 = xgboost_model168.predict(data)
     
-    predictions = [
+    predictions.append(
         Prediction(
             timestamp_predicted_for=timestamp,
             model_name='XGBoost',
             predicted_field='close_higher_shifted_1h',
             crypto=crypto_model.__name__,
             predicted_value=y_pred_1
-        ),
+        ))
+    predictions.append(
         Prediction(
             timestamp_predicted_for=timestamp,
             model_name='XGBoost',
             predicted_field='close_higher_shifted_24h',
             crypto=crypto_model.__name__,
             predicted_value=y_pred_24
-        ),
+        ))
+    predictions.append(
         Prediction(
             timestamp_predicted_for=timestamp,
             model_name='XGBoost',
             predicted_field='close_higher_shifted_168h',
             crypto=crypto_model.__name__,
             predicted_value=y_pred_168
-        )
-    ]
+        ))
+    
 
-    with transaction.atomic(using=database):
-        Prediction.objects.using(database).bulk_create(predictions)
+    # with transaction.atomic(using=database):
+    #     Prediction.objects.using(database).bulk_create(predictions)
         
