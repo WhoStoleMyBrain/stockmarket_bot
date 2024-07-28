@@ -8,6 +8,7 @@ import torch
 import xgboost as xgb
 from sklearn.preprocessing import StandardScaler
 from datetime import datetime, timedelta
+import time
 
 class PredictionHandler:
     def __init__(self, lstm_sequence_length=100, database=Database.DEFAULT.value, timestamp=None) -> None:
@@ -15,71 +16,47 @@ class PredictionHandler:
         self.timestamp = timestamp
         self.crypto_models = crypto_models
         self.database = database
-        self.dataframes = self.initialize_dataframes()
 
-    def initialize_dataframes(self) -> dict[str, pd.DataFrame]:
-        dataframes = {}
-        start_timestamp = self.timestamp - timedelta(hours=self.lstm_sequence_length - 1)
-        complete_index = pd.date_range(start=start_timestamp, end=self.timestamp, freq='H')
-        columns = ['volume', 'sma', 'ema', 'rsi', 'macd', 'bollinger_high', 'bollinger_low', 'vmap', 'percentage_returns', 'log_returns']
+    def predict(self, dataframes: dict[str, pd.DataFrame]):
+        start_time = time.time()
+        interval_times = {"Process LSTM Data": 0, "Process XGBoost Data": 0, "LSTM Prediction": 0, "XGBoost Prediction": 0}
+        interval_counts = {"Process LSTM Data": 0, "Process XGBoost Data": 0, "LSTM Prediction": 0, "XGBoost Prediction": 0}
 
         for crypto_model in self.crypto_models:
-            data = crypto_model.objects.using(self.database).filter(
-                timestamp__gte=start_timestamp,
-                timestamp__lte=self.timestamp
-            ).values(
-                'timestamp', 'volume', 'sma', 'ema', 'rsi', 'macd', 'bollinger_high', 'bollinger_low', 'vmap', 'percentage_returns', 'log_returns'
-            ).order_by('timestamp')
-
-            df = pd.DataFrame(data)
-            if 'timestamp' not in df.columns or df.empty:
-                # Create an empty dataframe with the required columns if there's no data
-                df = pd.DataFrame(columns=['timestamp'] + columns)
-            else:
-                df['timestamp'] = pd.to_datetime(df['timestamp'])
-                df.set_index('timestamp', inplace=True)
-                df = df[~df.index.duplicated(keep='first')]  # Remove duplicate timestamps
-
-            # Reindex to include all timestamps and fill missing values
-            df = df.reindex(complete_index)  # Reindex to include all timestamps
-            df['symbol'] = crypto_model.symbol
-            df['symbol'].fillna(crypto_model.symbol, inplace=True)
-            df.fillna(0, inplace=True)  # Fill missing values with 0
-            dataframes[crypto_model.symbol] = df
-
-        return dataframes
-
-
-    def update_dataframes(self):
-        for crypto_model in self.crypto_models:
-            new_data = crypto_model.objects.using(self.database).filter(
-                timestamp=self.timestamp
-            ).values(
-                'timestamp', 'volume', 'sma', 'ema', 'rsi', 'macd', 'bollinger_high', 'bollinger_low', 'vmap', 'percentage_returns', 'log_returns'
-            ).first()
-            if new_data:
-                new_data['symbol'] = crypto_model.symbol
-                new_data['timestamp'] = pd.to_datetime(new_data['timestamp'])
-                new_df = pd.DataFrame([new_data])
-                new_df.set_index('timestamp', inplace=True)
-                new_df.sort_index(inplace=True)
-                existing_df = self.dataframes[crypto_model.symbol]
-                combined_df = pd.concat([existing_df, new_df]).sort_index().iloc[-self.lstm_sequence_length:]
-                self.dataframes[crypto_model.symbol] = combined_df
-
-    def predict(self, *args, **kwargs):
-        self.update_dataframes()
-        
-        for crypto_model in self.crypto_models:
-            symbol_data = self.dataframes[crypto_model.symbol]
+            symbol_data = dataframes[crypto_model.symbol]
             if len(symbol_data) < self.lstm_sequence_length:
                 print(f"Not enough data for {crypto_model.symbol}")
                 continue
+
+            interval_start = time.time()
             dataframe_lstm = self.process_lstm_data(symbol_data)
+            interval_times["Process LSTM Data"] += time.time() - interval_start
+            interval_counts["Process LSTM Data"] += 1
+
+            interval_start = time.time()
             dataframe_xgboost = self.process_xgboost_data(symbol_data.iloc[self.lstm_sequence_length-1:])
+            interval_times["Process XGBoost Data"] += time.time() - interval_start
+            interval_counts["Process XGBoost Data"] += 1
+
+            interval_start = time.time()
             self._try_predict(predict_with_lstm, 'lstm', {'data': dataframe_lstm, 'timestamp': self.timestamp, 'crypto_model': crypto_model, 'database': self.database})
+            interval_times["LSTM Prediction"] += time.time() - interval_start
+            interval_counts["LSTM Prediction"] += 1
+
+            interval_start = time.time()
             self._try_predict(predict_with_xgboost, 'XGBoost', {'data': dataframe_xgboost, 'timestamp': self.timestamp, 'crypto_model': crypto_model, 'database': self.database})
-            
+            interval_times["XGBoost Prediction"] += time.time() - interval_start
+            interval_counts["XGBoost Prediction"] += 1
+
+        end_time = time.time()
+        total_time = end_time - start_time
+
+        # Print timing information
+        print(f'Total time for predict: {total_time:.2f} seconds')
+        for interval_name, interval_duration in interval_times.items():
+            avg_time = interval_duration / interval_counts[interval_name] if interval_counts[interval_name] > 0 else 0
+            print(f'{interval_name}: {interval_duration:.2f} seconds ({(interval_duration / total_time) * 100:.2f}%) - Average time: {avg_time:.4f} seconds')
+
     def _try_predict(self, method, ml_model, kwargs):
         try:
             method(**kwargs)
@@ -87,7 +64,7 @@ class PredictionHandler:
             model = kwargs.get('crypto_model')
             timestamp = kwargs.get('timestamp')
             print(f'Prediction for {ml_model}, {model.__name__}, {timestamp} is already in DB.')
-            
+
     def process_lstm_data(self, dataframe: pd.DataFrame):
         features = ['volume', 'sma', 'ema', 'rsi', 'macd', 'bollinger_high', 'bollinger_low', 'vmap', 'percentage_returns', 'log_returns']
         dataframe = dataframe[features].fillna(0)
@@ -117,7 +94,7 @@ class PredictionHandler:
         dataframe_scaled = scaler.fit_transform(dataframe_extended)
         data_dmatrix = xgb.DMatrix(dataframe_scaled)
         return data_dmatrix
-    
+
     def restore_prediction_database(self):
         print(f'Deleting all predictions in database: {self.database}')
         deleted_obj_count, _ = Prediction.objects.using(self.database).all().delete()

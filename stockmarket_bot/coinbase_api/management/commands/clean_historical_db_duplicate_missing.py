@@ -1,4 +1,5 @@
 # base_app/management/commands/clean_historical_data.py
+import logging
 from django.core.management.base import BaseCommand
 from django.db.models import Count
 from coinbase_api.constants import crypto_models
@@ -10,9 +11,33 @@ from coinbase_api.models.models import AbstractOHLCV
 class Command(BaseCommand):
     help = 'Clean historical data by removing duplicates and handling missing data.'
 
+    def __init__(self):
+        super().__init__()
+        # Initialize logger
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.DEBUG)
+
+        # Create a file handler for logging
+        handler = logging.FileHandler('clean_historical_data.log')
+        handler.setLevel(logging.DEBUG)
+
+        # Create a console handler for logging
+        console_handler = logging.StreamHandler(self.stdout)
+        console_handler.setLevel(logging.INFO)
+
+        # Create a logging format
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        handler.setFormatter(formatter)
+        console_handler.setFormatter(formatter)
+
+        # Add the handlers to the logger
+        self.logger.addHandler(handler)
+        self.logger.addHandler(console_handler)
+
     def handle(self, *args, **kwargs):
         for crypto_model in crypto_models:
-            self.stdout.write(f"Processing {crypto_model.symbol}")
+            message = f"Processing {crypto_model.symbol}"
+            self.logger.info(message)
             
             # Step 1: Remove duplicate entries
             self.remove_duplicates(crypto_model)
@@ -20,7 +45,8 @@ class Command(BaseCommand):
             # Step 2: Handle missing data
             self.handle_missing_data(crypto_model)
             
-            self.stdout.write(f"Finished processing {crypto_model.symbol}")
+            message = f"Finished processing {crypto_model.symbol}"
+            self.logger.info(message)
 
     def remove_duplicates(self, crypto_model:AbstractOHLCV):
         duplicates = (crypto_model.objects.using(Database.HISTORICAL.value)
@@ -30,10 +56,12 @@ class Command(BaseCommand):
 
         for duplicate in duplicates:
             timestamp = duplicate['timestamp']
-            records = crypto_model.objects.using(Database.HISTORICAL.value).filter(timestamp=timestamp)
+            records = list(crypto_model.objects.using(Database.HISTORICAL.value).filter(timestamp=timestamp))
             # Keep the first record and delete the others
-            records[1:].delete()
-            self.stdout.write(f"Removed duplicates for {crypto_model.symbol} at {timestamp}")
+            for record in records[1:]:
+                record.delete()
+            message = f"Removed duplicates for {crypto_model.symbol} at {timestamp}"
+            self.logger.info(message)
 
     def handle_missing_data(self, crypto_model:AbstractOHLCV):
         all_records = (crypto_model.objects.using(Database.HISTORICAL.value)
@@ -63,7 +91,8 @@ class Command(BaseCommand):
                         percentage_returns=previous_record.percentage_returns,
                         log_returns=previous_record.log_returns,
                     )
-                    self.stdout.write(f"Filled missing data for {crypto_model.symbol} at {missing_timestamp}")
+                    message = f"Filled missing data for {crypto_model.symbol} at {missing_timestamp}"
+                    self.logger.info(message)
                     missing_timestamp += timedelta(hours=1)
 
             previous_record = record
