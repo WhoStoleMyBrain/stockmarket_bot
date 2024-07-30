@@ -9,6 +9,7 @@ import xgboost as xgb
 from sklearn.preprocessing import StandardScaler
 import time
 from django.db import transaction
+from concurrent.futures import ThreadPoolExecutor
 
 class PredictionHandler:
     def __init__(self, lstm_sequence_length=100, database=Database.DEFAULT.value, timestamp=None) -> None:
@@ -19,40 +20,46 @@ class PredictionHandler:
 
     def predict(self, dataframes: dict[str, pd.DataFrame]):
         start_time = time.time()
-        interval_times = {"Process LSTM Data": 0, "Process XGBoost Data": 0, "LSTM Prediction": 0, "XGBoost Prediction": 0}
-        interval_counts = {"Process LSTM Data": 0, "Process XGBoost Data": 0, "LSTM Prediction": 0, "XGBoost Prediction": 0}
+        # interval_times = {"Process LSTM Data": 0, "Process XGBoost Data": 0, "LSTM Prediction": 0, "XGBoost Prediction": 0}
+        # interval_counts = {"Process LSTM Data": 0, "Process XGBoost Data": 0, "LSTM Prediction": 0, "XGBoost Prediction": 0}
         predictions = []
+        
+        # interval_start = time.time()
+        # xgboost_results = self.process_xgboost_data_parallel(dataframes)
+        # interval_times["Process Bulk XGBoost Data"] = time.time() - interval_start
+        # interval_counts["Process Bulk XGBoost Data"] = len(dataframes)
         for crypto_model in self.crypto_models:
             symbol_data = dataframes[crypto_model.symbol]
             if len(symbol_data) < self.lstm_sequence_length:
                 print(f"Not enough data for {crypto_model.symbol}")
                 continue
 
-            interval_start = time.time()
+            # interval_start = time.time()
             dataframe_lstm = self.process_lstm_data(symbol_data)
-            interval_times["Process LSTM Data"] += time.time() - interval_start
-            interval_counts["Process LSTM Data"] += 1
+            # interval_times["Process LSTM Data"] += time.time() - interval_start
+            # interval_counts["Process LSTM Data"] += 1
 
-            interval_start = time.time()
+            # interval_start = time.time()
             dataframe_xgboost = self.process_xgboost_data(symbol_data.iloc[self.lstm_sequence_length-1:])
-            interval_times["Process XGBoost Data"] += time.time() - interval_start
-            interval_counts["Process XGBoost Data"] += 1
+            # dataframe_xgboost = xgboost_results[crypto_model.symbol]
+            # interval_times["Process XGBoost Data"] += time.time() - interval_start
+            # interval_counts["Process XGBoost Data"] += 1
 
-            interval_start = time.time()
+            # interval_start = time.time()
             
             self._try_predict(predict_with_lstm, 'lstm', {'data': dataframe_lstm, 'timestamp': self.timestamp, 'crypto_model': crypto_model, 'predictions': predictions, 'database': self.database})
-            interval_times["LSTM Prediction"] += time.time() - interval_start
-            interval_counts["LSTM Prediction"] += 1
+            # interval_times["LSTM Prediction"] += time.time() - interval_start
+            # interval_counts["LSTM Prediction"] += 1
 
-            interval_start = time.time()
+            # interval_start = time.time()
             self._try_predict(predict_with_xgboost, 'XGBoost', {'data': dataframe_xgboost, 'timestamp': self.timestamp, 'crypto_model': crypto_model, 'predictions': predictions, 'database': self.database})
-            interval_times["XGBoost Prediction"] += time.time() - interval_start
-            interval_counts["XGBoost Prediction"] += 1
-        interval_start = time.time()
-        interval_counts["Updating db"] = 1
+            # interval_times["XGBoost Prediction"] += time.time() - interval_start
+            # interval_counts["XGBoost Prediction"] += 1
+        # interval_start = time.time()
+        # interval_counts["Updating db"] = 1
         with transaction.atomic(using=self.database):
             Prediction.objects.using(self.database).bulk_create(predictions)
-        interval_times["Updating db"] = time.time() - interval_start
+        # interval_times["Updating db"] = time.time() - interval_start
             
 
         end_time = time.time()
@@ -60,9 +67,9 @@ class PredictionHandler:
 
         # Print timing information
         print(f'Total time for predict: {total_time:.2f} seconds')
-        for interval_name, interval_duration in interval_times.items():
-            avg_time = interval_duration / interval_counts[interval_name] if interval_counts[interval_name] > 0 else 0
-            print(f'{interval_name}: {interval_duration:.2f} seconds ({(interval_duration / total_time) * 100:.2f}%) - Average time: {avg_time:.4f} seconds')
+        # for interval_name, interval_duration in interval_times.items():
+        #     avg_time = interval_duration / interval_counts[interval_name] if interval_counts[interval_name] > 0 else 0
+        #     print(f'{interval_name}: {interval_duration:.2f} seconds ({(interval_duration / total_time) * 100:.2f}%) - Average time: {avg_time:.4f} seconds')
 
     def _try_predict(self, method, ml_model, kwargs):
         try:
@@ -85,22 +92,54 @@ class PredictionHandler:
 
     def process_xgboost_data(self, dataframe: pd.DataFrame):
         features = ['volume', 'sma', 'ema', 'rsi', 'macd', 'bollinger_high', 'bollinger_low', 'vmap', 'percentage_returns', 'log_returns']
-        dataframe = dataframe[features].fillna(0)
+        dataframe = dataframe[features].fillna(0).iloc[[-1]]
         
-        dataframe['Hour'] = dataframe.index.hour
-        dataframe['Day_of_Week'] = dataframe.index.dayofweek
-        dataframe['Day_of_Month'] = dataframe.index.day
-        dataframe['Month'] = dataframe.index.month
-        dataframe['Year'] = dataframe.index.year
-        dataframe['Is_Weekend'] = (dataframe['Day_of_Week'] >= 5).astype(int)
+        dataframe_extended = dataframe.assign(
+            Hour=dataframe.index.hour,
+            Day_of_Week=dataframe.index.dayofweek,
+            Day_of_Month=dataframe.index.day,
+            Month=dataframe.index.month,
+            Year=dataframe.index.year,
+            Is_Weekend=(dataframe.index.dayofweek >= 5).astype(int)
+        )
         
         features_extended = AbstractOHLCV.get_features_dropped()
-        dataframe_extended = dataframe[features_extended]
+        dataframe_extended = dataframe_extended[features_extended]
         
         scaler = StandardScaler()
         dataframe_scaled = scaler.fit_transform(dataframe_extended)
         data_dmatrix = xgb.DMatrix(dataframe_scaled)
         return data_dmatrix
+    
+    def process_xgboost_data_parallel(self, dataframes: dict[str, pd.DataFrame]):
+        features = ['volume', 'sma', 'ema', 'rsi', 'macd', 'bollinger_high', 'bollinger_low', 'vmap', 'percentage_returns', 'log_returns']
+
+        def process_single_dataframe(crypto_symbol, dataframe):
+            dataframe = dataframe[features].fillna(0)
+            dataframe_extended = dataframe.assign(
+                Hour=dataframe.index.hour,
+                Day_of_Week=dataframe.index.dayofweek,
+                Day_of_Month=dataframe.index.day,
+                Month=dataframe.index.month,
+                Year=dataframe.index.year,
+                Is_Weekend=(dataframe.index.dayofweek >= 5).astype(int)
+            )
+
+            features_extended = AbstractOHLCV.get_features_dropped()
+            dataframe_extended = dataframe_extended[features_extended]
+
+            scaler = StandardScaler()
+            dataframe_scaled = scaler.fit_transform(dataframe_extended)
+
+            data_dmatrix = xgb.DMatrix(dataframe_scaled)
+            return crypto_symbol, data_dmatrix
+
+        # Use ThreadPoolExecutor to process dataframes in parallel
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            futures = {executor.submit(process_single_dataframe, symbol, df): symbol for symbol, df in dataframes.items()}
+            results = {future.result()[0]: future.result()[1] for future in futures}
+
+        return results
 
     def restore_prediction_database(self):
         print(f'Deleting all predictions in database: {self.database}')

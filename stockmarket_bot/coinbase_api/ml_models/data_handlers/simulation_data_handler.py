@@ -138,14 +138,8 @@ class SimulationDataHandler(AbstractDataHandler):
         return self.initial_timestamp
 
     def get_current_state(self) -> npt.NDArray[np.float16]:
-        start_time = time.time()
-        
         self.total_volume, self.account_holdings, self.usdc_held = self.get_account_and_volume_info()
         self.new_crypto_data = self.get_new_crypto_data()
-        
-        end_time = time.time()
-        print(f"get_current_state took {end_time - start_time:.2f} seconds")
-        
         return np.array([self.total_volume, self.usdc_held] + self.account_holdings + self.new_crypto_data)
 
     def get_account_and_volume_info(self) -> Tuple[float, List[float], float]:
@@ -187,32 +181,32 @@ class SimulationDataHandler(AbstractDataHandler):
 
     def update_state(self, action) -> Tuple[npt.NDArray[np.float16], float, bool, Dict[Any, Any]]:
         start_time = time.time()
-        interval_times = []
+        # interval_times = []
 
-        interval_start = time.time()
+        # interval_start = time.time()
         costs_for_action = self.cost_for_action(action)
-        interval_times.append(("Cost Calculation", time.time() - interval_start))
+        # interval_times.append(("Cost Calculation", time.time() - interval_start))
 
-        interval_start = time.time()
+        # interval_start = time.time()
         buy_indices = [(idx, i) for idx, i in enumerate(action) if i > self.action_factor and self.crypto_models[idx].symbol != 'USDT']
         sell_indices = [(idx, i) for idx, i in enumerate(action) if i < -self.action_factor]
         usdt_action = action[self.crypto_models.index(next(cm for cm in self.crypto_models if cm.symbol == 'USDT'))]
         hold_usdc = usdt_action < 0
-        interval_times.append(("Get Indices", time.time() - interval_start))
+        # interval_times.append(("Get Indices", time.time() - interval_start))
 
-        interval_start = time.time()
+        # interval_start = time.time()
         usdc_account = self.get_crypto_account('USDC')
         available_liquidity = self.get_liquidity() - sum(costs_for_action)
-        interval_times.append(("Get USDC Account and Liquidity", time.time() - interval_start))
+        # interval_times.append(("Get USDC Account and Liquidity", time.time() - interval_start))
 
-        interval_start = time.time()
+        # interval_start = time.time()
         N = 5
         top_buy_indices = sorted(buy_indices, key=lambda x: -x[1])[:N]
         total_buy_actions = sum([self.map_buy_action(buy_action, self.action_factor) for idx, buy_action in top_buy_indices])
         individual_liquidity = available_liquidity / total_buy_actions if total_buy_actions > 0 else 0
-        interval_times.append(("Select Top Cryptos for Buying", time.time() - interval_start))
+        # interval_times.append(("Select Top Cryptos for Buying", time.time() - interval_start))
 
-        interval_start = time.time()
+        # interval_start = time.time()
         crypto_updates: List[Account] = []
         usdc_updates: List[Account] = []
         # print(f'holding with usdt action: {hold_usdc}:{usdt_action}')
@@ -228,9 +222,9 @@ class SimulationDataHandler(AbstractDataHandler):
                 usdc_account.value -= buy_amount
                 crypto_updates.append(crypto_account)
                 usdc_updates.append(usdc_account)
-        interval_times.append(("Perform Buy Actions", time.time() - interval_start))
+        # interval_times.append(("Perform Buy Actions", time.time() - interval_start))
 
-        interval_start = time.time()
+        # interval_start = time.time()
         for idx, sell_action in sell_indices:
             crypto_model = self.crypto_models[idx]
             crypto_account = self.get_crypto_account(crypto_model.symbol)
@@ -242,38 +236,38 @@ class SimulationDataHandler(AbstractDataHandler):
             crypto_account.value -= sell_amount
             crypto_updates.append(crypto_account)
             usdc_updates.append(usdc_account)
-        interval_times.append(("Perform Sell Actions", time.time() - interval_start))
+        # interval_times.append(("Perform Sell Actions", time.time() - interval_start))
 
-        interval_start = time.time()
+        # interval_start = time.time()
         with transaction.atomic(using=self.database):
             Account.objects.using(self.database).bulk_update(crypto_updates, ['value'])
             Account.objects.using(self.database).bulk_update(usdc_updates, ['value'])
-        interval_times.append(("Bulk Save Updates", time.time() - interval_start))
+        # interval_times.append(("Bulk Save Updates", time.time() - interval_start))
 
-        interval_start = time.time()
+        # interval_start = time.time()
         new_timestamp = self.timestamp + timedelta(hours=1)
         done = False
-        interval_times.append(("Fetch New Data", time.time() - interval_start))
+        # interval_times.append(("Fetch New Data", time.time() - interval_start))
 
-        interval_start = time.time()
+        # interval_start = time.time()
         self.timestamp = new_timestamp
         self.prediction_handler.timestamp = new_timestamp
         self.prediction_handler.predict(self.get_dataframes_subset())
-        interval_times.append(("Make Predictions", time.time() - interval_start))
+        # interval_times.append(("Make Predictions", time.time() - interval_start))
 
-        interval_start = time.time()
+        # interval_start = time.time()
         self.state = self.get_current_state()
         self.past_volumes.append(self.total_volume)
         if len(self.past_volumes) > self.short_term_reward_window:
             self.past_volumes.pop(0)
-        interval_times.append(("Get Current State", time.time() - interval_start))
+        # interval_times.append(("Get Current State", time.time() - interval_start))
 
         end_time = time.time()
         total_time = end_time - start_time
 
         print(f'Total time for update_state: {total_time:.2f} seconds')
-        for interval_name, interval_duration in interval_times:
-            print(f'{interval_name}: {interval_duration:.2f} seconds ({(interval_duration / total_time) * 100:.2f}%)')
+        # for interval_name, interval_duration in interval_times:
+        #     print(f'{interval_name}: {interval_duration:.2f} seconds ({(interval_duration / total_time) * 100:.2f}%)')
 
         self.step_count += 1
         info = {}

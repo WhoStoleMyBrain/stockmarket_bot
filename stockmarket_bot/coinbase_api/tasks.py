@@ -115,9 +115,9 @@ def predict_with_xgboost(data, timestamp, crypto_model: AbstractOHLCV, predictio
     xgboost_model24 = app_config.xgboost_model24
     xgboost_model168 = app_config.xgboost_model168
     
-    y_pred_1 = xgboost_model1.predict(data)
-    y_pred_24 = xgboost_model24.predict(data)
-    y_pred_168 = xgboost_model168.predict(data)
+    y_pred_1 = xgboost_model1.predict(data)[0]
+    y_pred_24 = xgboost_model24.predict(data)[0]
+    y_pred_168 = xgboost_model168.predict(data)[0]
     
     predictions.append(
         Prediction(

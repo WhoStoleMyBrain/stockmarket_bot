@@ -25,6 +25,7 @@ class CustomEnv(gym.Env):
         next_state, cost_for_action, terminated, info = self.data_handler.update_state(action)
         # self.next_state = next_state
         self.state = next_state
+        self.cost_for_action = cost_for_action
         total_volume = next_state[0]
         # usdc = next_state[1]
         reward_q = self.data_handler.get_reward(action)
