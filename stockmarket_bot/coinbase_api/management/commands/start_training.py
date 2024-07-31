@@ -42,7 +42,7 @@ class Command(BaseCommand):
         model_path = 'coinbase_api/ml_models/rl_model.pkl'
         log_dir = '/logs'
         # data_handler = SimulationDataHandler(total_steps=param)
-        intervals = [168, 336, 504, 672]  # 1 week, 2 weeks, 3 weeks, 4 weeks
+        intervals = [1680, 3360, 5040, 6720]  # 1 week, 2 weeks, 3 weeks, 4 weeks
         # interval_weights = [2, 2, 2, 2]   # 4x1week, 3x2weeks, 2x3weeks, 1x4weeks
         interval_weights = [4, 3, 2, 1]   # 4x1week, 3x2weeks, 2x3weeks, 1x4weeks
         # intervals = [168]

@@ -31,7 +31,7 @@ class CustomEnv(gym.Env):
         reward_q = self.data_handler.get_reward(action)
         self.reward = reward_q
         truncated = False
-        print(self.data_handler.get_current_state_output(action))
+        # print(self.data_handler.get_current_state_output(action))
         if (total_volume < self.data_handler.initial_volume / 10):
             terminated = True
         return next_state, reward_q, terminated, truncated, info

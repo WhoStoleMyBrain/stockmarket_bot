@@ -241,7 +241,10 @@ class Prediction(models.Model):
 
     class Meta:
         unique_together = ['timestamp_predicted_for', 'model_name', 'predicted_field', 'crypto']  # To ensure unique combination of these fields
-
+        indexes = [
+                    models.Index(fields=['timestamp_predicted_for', 'crypto']),
+                    models.Index(fields=['crypto', 'model_name', 'predicted_field']),
+                ]
 class Account(models.Model):
     name = models.CharField(max_length=255)
     uuid = models.UUIDField()
