@@ -1,3 +1,4 @@
+import logging
 from typing import Any, Dict, List, Tuple
 import gymnasium as gym
 from gymnasium import spaces
@@ -8,9 +9,16 @@ import numpy.typing as npt
 from ..constants import crypto_models, crypto_features, crypto_predicted_features, crypto_extra_features
 from ..enums import Actions
 
+# Configure logging
+logging.basicConfig(
+    filename='training_log.log',
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    filemode='a'
+)
 
 class CustomEnv(gym.Env):
-    def __init__(self, data_handler:AbstractDataHandler, transaction_cost_factor=1.0) -> None:
+    def __init__(self, data_handler: AbstractDataHandler, transaction_cost_factor=1.0) -> None:
         super(CustomEnv, self).__init__()
         self.crypto_models = crypto_models
         self.data_handler = data_handler
@@ -18,22 +26,33 @@ class CustomEnv(gym.Env):
         N = len(self.crypto_models)
         self.action_space = spaces.Box(low=-1, high=1, shape=(N,), dtype=np.float32)  # where N is the number of cryptocurrencies
         M = len(self.get_crypto_features()) + len(self.get_crypto_predicted_features()) + len(self.get_extra_features())
-        shape_value = M*N + 2 #! +1 because of total volume held and USDC value held
+        shape_value = M * N + 2  # +1 because of total volume held and USDC value held
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(shape_value,), dtype=np.float64)
 
     def step(self, action) -> Tuple[npt.NDArray[np.float16], float, bool, Dict[Any, Any]]:
         next_state, cost_for_action, terminated, info = self.data_handler.update_state(action)
-        # self.next_state = next_state
         self.state = next_state
         self.cost_for_action = cost_for_action
         total_volume = next_state[0]
-        # usdc = next_state[1]
         reward_q = self.data_handler.get_reward(action)
         self.reward = reward_q
         truncated = False
-        # print(self.data_handler.get_current_state_output(action))
-        if (total_volume < self.data_handler.initial_volume / 10):
+
+        if total_volume < self.data_handler.initial_volume / 10:
             terminated = True
+            logging.debug(f'Terminated: {terminated}')
+            logging.debug(f'Total time steps: {self.data_handler.total_steps}')
+            logging.debug(f'Initial timestamp: {self.data_handler.initial_timestamp}')
+            logging.debug(f'Current timestamp: {self.data_handler.timestamp}')
+            logging.debug(f'Step number: {self.data_handler.step_count}')
+            logging.debug(f'Crypto values: {self.data_handler.account_holdings}')
+            logging.debug(f'USDC value: {self.data_handler.usdc_held}')
+            logging.debug(f'Action: {action}')
+            logging.debug(f'Next state: {next_state}')
+            logging.debug(f'Reward: {reward_q}')
+            logging.debug(f'Total volume: {total_volume}')
+            logging.debug(f'Cost for action: {cost_for_action}')
+        
         return next_state, reward_q, terminated, truncated, info
 
     def reset(self, seed=None, options=None) -> Tuple[npt.NDArray[np.float16], Dict[Any, Any]]:
@@ -55,7 +74,3 @@ class CustomEnv(gym.Env):
     
     def get_extra_features(self) -> List[str]:
         return crypto_extra_features
-
-
-
-    
