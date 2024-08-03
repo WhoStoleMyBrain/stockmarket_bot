@@ -216,6 +216,7 @@ class SimulationDataHandler:
 
         # interval_start = time.time()
         costs_for_action = self.cost_for_action(action)
+        self.costs_for_action = costs_for_action
         # interval_times.append(("Cost Calculation", time.time() - interval_start))
 
         # interval_start = time.time()
@@ -602,16 +603,19 @@ class SimulationDataHandler:
 
     def get_reward(self, action: Actions) -> float:
         net_return = (self.total_volume / self.initial_volume) - 1
-        reward = net_return * 0.1  # Scale the reward as needed
-        asymmetry_factor = 2.0  # Adjust this factor to control asymmetry
+        reward = net_return * 1.0  # Scale the reward as needed
+        asymmetry_factor = 1.0  # Adjust this factor to control asymmetry
 
+        cumulative_reward = 0
+        if len(self.past_volumes) >= 1:
+            past_volume = np.sum(self.past_volumes) / len(self.past_volumes)
+            short_term_gain = (self.total_volume - past_volume) / past_volume
+            cumulative_reward += short_term_gain * 5
+        transaction_costs = np.sum(self.costs_for_action)
+        max_drawdown = np.min(self.total_volume / np.maximum.accumulate(self.past_volumes)) - 1
+        drawdown_penalty = max_drawdown * 0.5
+        reward = net_return * 0.25 + cumulative_reward * 1.0 - transaction_costs * 0.25 - drawdown_penalty
+        reward *= 5
         if reward > 0:
             reward *= asymmetry_factor
-
-        if len(self.past_volumes) >= self.short_term_reward_window:
-            past_volume = np.sum(self.past_volumes[-self.short_term_reward_window:]) / self.short_term_reward_window
-            short_term_gain = (self.total_volume - past_volume) / past_volume
-            reward += short_term_gain * 5
-        reward *= 5
-
         return reward

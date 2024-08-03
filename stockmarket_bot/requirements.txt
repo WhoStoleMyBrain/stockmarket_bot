@@ -18,4 +18,3 @@ gymnasium==0.29.1
 shimmy
 coinbase-advanced-py
 django-bulk-update-or-create
-tensorflow
