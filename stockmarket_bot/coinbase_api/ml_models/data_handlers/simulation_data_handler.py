@@ -48,7 +48,6 @@ class SimulationDataHandler:
         self.buffer = 2*total_steps
         self.initial_timestamp = self.get_starting_timestamp()
         self.timestamp = self.initial_timestamp
-        self.initial_prices = self.get_initial_crypto_prices()
         self.dataframe_cache = self.fetch_all_historical_data()
         self.prediction_cache = self.fetch_all_prediction_data()
         # self.symbol_indices = np.array([self.symbol_to_index[symbol] for symbol in self.symbols])
@@ -105,14 +104,11 @@ class SimulationDataHandler:
 
 
     def fetch_all_prediction_data(self) -> Dict[str, Dict[datetime, List[float]]]:
-        
         # Initialize the dictionary for storing prediction data
         prediction_data = {crypto.symbol: {} for crypto in self.crypto_models}
-        
         # Define the time range for fetching predictions
         start_timestamp = self.timestamp - timedelta(hours=self.lstm_sequence_length + 1)
         end_timestamp = self.timestamp + timedelta(hours=self.total_steps)
-        
         # Fetch predictions from the database
         predictions = list(Prediction.objects.using(Database.HISTORICAL.value).filter(
             timestamp_predicted_for__range=(start_timestamp, end_timestamp),
@@ -120,42 +116,16 @@ class SimulationDataHandler:
         ).values(
             'timestamp_predicted_for', 'crypto', 'model_name', 'predicted_field', 'predicted_value'
         ).iterator())
-        
         # Process the fetched predictions and insert them into the dictionary
         for pred in predictions:
             symbol = pred['crypto']
             timestamp = pred['timestamp_predicted_for']
             index = 0 if pred['predicted_field'] == 'close_higher_shifted_1h' else 1 if pred['predicted_field'] == 'close_higher_shifted_24h' else 2
             index += 0 if pred['model_name'] == 'LSTM' else 3
-            
             if timestamp not in prediction_data[symbol]:
                 prediction_data[symbol][timestamp] = [0.0] * 6  # 3 for LSTM and 3 for XGBoost
             prediction_data[symbol][timestamp][index] = pred['predicted_value']
         return prediction_data
-
-
-    def get_initial_crypto_prices(self) -> Dict[str, float]:
-        values = {}
-        for crypto_model in self.crypto_models:
-            try:
-                values[crypto_model.symbol] = crypto_model.objects.using(Database.HISTORICAL.value).filter(timestamp=self.timestamp).get().close
-            except crypto_model.DoesNotExist:
-                values[crypto_model.symbol] = crypto_model.default_entry(timestamp=datetime(year=2020, month=1, day=1)).close
-            except AttributeError:
-                values[crypto_model.symbol] = crypto_model.default_entry(timestamp=datetime(year=2020, month=1, day=1)).close
-            except crypto_model.MultipleObjectsReturned:
-                values[crypto_model.symbol] = crypto_model.default_entry(timestamp=datetime(year=2020, month=1, day=1)).close
-        return values
-
-    def get_reward_ratios_for_current_timestep(self, amount=5) -> Dict[str, float]:
-        ratios = {}
-        for crypto_model in self.crypto_models:
-            value = self.get_latest_value(crypto_model)
-            initial_price = self.initial_prices.get(crypto_model.symbol, 0)
-            ratios[crypto_model.symbol] = value / initial_price if initial_price != 0 else 0
-
-        sorted_ratios = dict(sorted(ratios.items(), key=lambda item: -item[1]))
-        return {k: sorted_ratios[k] for k in list(sorted_ratios)[:amount]}
 
     def get_earliest_timestamp(self) -> datetime:
         all_information = CryptoMetadata.objects.using(Database.HISTORICAL.value).all()
@@ -203,12 +173,6 @@ class SimulationDataHandler:
 
     def map_sell_action(self, sell_action: float, action_factor: float) -> float:
         return (max(sell_action + action_factor - 0.1, action_factor - 1)) / (1 - action_factor)
-    
-    def get_dataframes_subset(self) -> Dict[str, pd.DataFrame]:
-        subset = {}
-        for symbol, df in self.dataframe_cache.items():
-            subset[symbol] = df.loc[self.timestamp - timedelta(hours=self.lstm_sequence_length - 1):self.timestamp]
-        return subset
 
     def update_state(self, action) -> Tuple[npt.NDArray[np.float16], float, bool, Dict[Any, Any]]:
         self.costs_for_action = self.cost_for_action(action[1:])  # Exclude the first action for costs calculation
@@ -261,85 +225,8 @@ class SimulationDataHandler:
     def get_crypto_values_from_cache_vectorized(self, timestamp: datetime) -> np.ndarray:
         return np.array([self.dataframe_cache[crypto.symbol].at[timestamp, 'close'] for crypto in self.crypto_models])
 
-    def get_current_state_output(self, action) -> str:
-        reward_q = self.get_reward(action)
-        reward_ratios = self.get_reward_ratios_for_current_timestep()
-        reward_string = f'gain: {self.total_volume / 1000:.3f},'
-        # Fetch all account information in a single query
-        accounts = {acc.name: acc for acc in Account.objects.using(self.database).filter(
-            name__in=[f'{crypto.symbol} Wallet' for crypto in self.crypto_models] + ['USDC Wallet']
-        ).select_related()}
-
-        # Fetch crypto prices from cache
-        crypto_prices = {
-            crypto.symbol: self.get_crypto_value_from_cache(crypto.symbol, self.timestamp)
-            for crypto in self.crypto_models
-        }
-        for key, value in reward_ratios.items():
-            crypto_model = self.get_crypto_model_by_symbol(key)
-            account_value, price = self.get_crypto_account_value(crypto_model, accounts, crypto_prices)
-            reward_string += self.get_output_for_crypto(crypto_model, value, account_value, price)
-
-        cost = sum(self.cost_for_action(action))
-        liquidity_string = self.get_liquidity_string(self.get_reward_ratios_for_current_timestep(len(self.crypto_models)))
-
-        return f"\n\n\n{self.get_step_count()}/{self.get_total_steps()}: time: {self.timestamp}\n\tcurrent volume: {self.total_volume:.2f}\n\tusdc: {self.usdc_held:.2f}\n\treward {reward_q:.2f}\n\tcost: {cost:.2f}\n\t{reward_string}\n\tcryptos: {liquidity_string}"
-
-    def get_liquidity_string(self, reward_ratios: Dict[str, float]) -> str:
-        # Fetch all account information in a single query
-        accounts = {acc.name: acc for acc in Account.objects.using(self.database).filter(name__in=[f'{crypto.symbol} Wallet' for crypto in self.crypto_models] + ['USDC Wallet']).select_related()}
-
-        # Fetch crypto prices from cache
-        crypto_prices = {
-            crypto.symbol: self.get_crypto_value_from_cache(crypto.symbol, self.timestamp)
-            for crypto in self.crypto_models
-        }
-
-        # Create a dictionary with account values and prices
-        crypto_model_values = {
-            crypto_model.symbol: (accounts.get(f'{crypto_model.symbol} Wallet', Account(name=f'{crypto_model.symbol} Wallet', value=0)).value, crypto_prices[crypto_model.symbol])
-            for crypto_model in self.crypto_models
-        }
-
-        # Sort the dictionary based on the product of account value and price
-        sorted_crypto_values = dict(sorted(crypto_model_values.items(), key=lambda item: -item[1][0] * item[1][1]))
-
-        # Generate the output string
-        ret_string = ''
-        for idx, (symbol, (account_value, price)) in enumerate(sorted_crypto_values.items()):
-            crypto_model = self.get_crypto_model_by_symbol(symbol)
-            reward_ratio = reward_ratios.get(symbol, 0)
-            ret_string += self.get_output_for_crypto(crypto_model, reward_ratio, account_value, price)
-            if idx > 5:
-                break
-
-        return ret_string
-
-    def get_latest_value(self, crypto_model: AbstractOHLCV) -> float:
-        try:
-            return self.get_crypto_value_from_cache(crypto_model.symbol, self.timestamp)
-        except (crypto_model.DoesNotExist, AttributeError):
-            return crypto_model.default_entry(timestamp=datetime(year=2020, month=1, day=1)).close
-
-    def get_crypto_model_by_symbol(self, symbol: str):
-        return next(crypto for crypto in self.crypto_models if crypto.symbol == symbol)
-
-    def get_crypto_account_value(self, crypto_model: AbstractOHLCV, accounts: Dict[str, Account], crypto_prices: Dict[str, float]) -> Tuple[float, float]:
-        account_value = accounts.get(f'{crypto_model.symbol} Wallet', Account(name=f'{crypto_model.symbol} Wallet', value=0)).value
-        price = crypto_prices.get(crypto_model.symbol, 0)
-        return account_value, price
-
-    def get_crypto_account(self, symbol: str) -> Account:
-        try:
-            crypto_account = Account.objects.using(self.database).get(name=f'{symbol} Wallet')
-            return crypto_account
-        except Account.DoesNotExist:
-            print(f'Account {symbol} Wallet does not exist!')
-            raise Account.DoesNotExist
-
     def reset_state(self) -> npt.NDArray[np.float16]:
         self.logger.info("Resetting state")
-    
         # Log initial state information
         self.logger.info(f"Total steps: {self.total_steps}")
         self.logger.info(f"Initial timestamp: {self.initial_timestamp}")
@@ -367,7 +254,6 @@ class SimulationDataHandler:
             self.buffer = 2*self.total_steps
             self.initial_timestamp = self.get_starting_timestamp()
             self.timestamp = self.initial_timestamp
-            self.initial_prices = self.get_initial_crypto_prices()
             self.dataframe_cache = self.fetch_all_historical_data()
             # self.symbol_indices = np.array([self.symbol_to_index[symbol] for symbol in self.symbols])
             self.prediction_cache = self.fetch_all_prediction_data()
@@ -426,29 +312,6 @@ class SimulationDataHandler:
         transaction_costs = transaction_volumes * fee_rates * self.transaction_cost_factor
         return transaction_costs.tolist()
 
-
-    def calculate_transaction_volume(self, crypto: AbstractOHLCV, is_buy: bool, factor: float, total_buy_action: float, available_liquidity: float) -> float:
-        if is_buy:
-            price = self.get_crypto_value_from_cache(crypto.symbol, self.timestamp)
-            proportion = self.map_buy_action(factor, self.action_factor) / total_buy_action
-            if price == 0:
-                transaction_volume = 0
-            else:
-                transaction_volume = available_liquidity * proportion
-        else:
-            # crypto_account = accounts.get(f'{crypto.symbol} Wallet', Account(name=f'{crypto.symbol} Wallet', value=0))
-            crypto_account_value = self.account_holdings.get(crypto.symbol)
-            price = self.get_crypto_value_from_cache(crypto.symbol, self.timestamp)
-            transaction_volume = price * crypto_account_value * abs(factor)
-        return transaction_volume
-
-
-    def get_crypto_features(self) -> List[str]:
-        return crypto_features
-
-    def get_crypto_predicted_features(self) -> List[str]:
-        return crypto_predicted_features
-
     def get_new_prediction_data(self, timestamp: datetime) -> Dict[str, List[float]]:
         all_entries = {
             crypto.symbol: self.prediction_cache[crypto.symbol].get(timestamp, [0.0] * 6)
@@ -462,31 +325,6 @@ class SimulationDataHandler:
 
     def reset_account_data(self) -> None:
         self.usdc_held = self.initial_volume  # Initialize USDC in memory
-
-    def get_new_instance(self, crypto_model: AbstractOHLCV, instance: AbstractOHLCV) -> AbstractOHLCV:
-        return crypto_model(
-            timestamp=instance.timestamp,
-            open=instance.open,
-            high=instance.high,
-            low=instance.low,
-            close=instance.close,
-            volume=instance.volume,
-            sma=instance.sma,
-            ema=instance.ema,
-            rsi=instance.rsi,
-            macd=instance.macd,
-            bollinger_high=instance.bollinger_high,
-            bollinger_low=instance.bollinger_low,
-            vmap=instance.vmap,
-            percentage_returns=instance.percentage_returns,
-            log_returns=instance.log_returns,
-            close_higher_shifted_1h=instance.close_higher_shifted_1h,
-            close_higher_shifted_24h=instance.close_higher_shifted_24h,
-            close_higher_shifted_168h=instance.close_higher_shifted_168h,
-        )
-
-    def get_liquidity(self) -> float:
-        return self.usdc_held
     
     def get_timestamp_index(self, timestamp: datetime) -> int:
         return self.timestamp_to_index.get(timestamp, -1)
@@ -501,15 +339,6 @@ class SimulationDataHandler:
         for crypto in self.crypto_models:
             all_entries.extend(prediction_data[crypto.symbol])
         return all_entries
-
-    def get_step_count(self) -> int:
-        return self.step_count
-
-    def get_total_steps(self) -> int:
-        return self.total_steps
-
-    def get_output_for_crypto(self, crypto_model: AbstractOHLCV, reward_ratio, account_value=None, price=None) -> str:
-        return f'\n\t\t{crypto_model.symbol}:\t{account_value:.2f} =\t{account_value * price:.2f} (reward ratio: {reward_ratio:.2f})'
 
     def get_reward(self, action: Actions) -> float:
         if self.reward_function_index == 0:
