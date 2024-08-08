@@ -1,0 +1,128 @@
+{
+    "total_timesteps": 3e6,
+    "phases": [
+        {
+            "percentage": 30,
+            "intervals": [1280, 1664, 3328],
+            "interval_weights": [10, 8, 6],
+            "interval_transaction_costs": 0.0,
+            "initial_lr": 5e-4,
+            "final_lr": 1e-5,
+            "clip_range": 0.2,
+            "batch_size": 64,
+            "n_epochs": 6,
+            "reward_function_index": 0
+        },
+        {
+            "percentage": 1,
+            "intervals": [640],
+            "interval_weights": [1],
+            "interval_transaction_costs": 0.0,
+            "initial_lr": 3e-4,
+            "final_lr": 1e-5,
+            "clip_range": 0.2,
+            "batch_size": 64,
+            "n_epochs": 12,
+            "reward_function_index": 3
+        },
+        {
+            "percentage": 20,
+            "intervals": [192, 576, 1280, 1664, 3328],
+            "interval_weights": [30, 20, 6, 4, 2],
+            "interval_transaction_costs": 0.25,
+            "initial_lr": 3e-4,
+            "final_lr": 1e-5,
+            "clip_range": 0.2,
+            "batch_size": 64,
+            "n_epochs": 6,
+            "reward_function_index": 0
+        },
+        {
+            "percentage": 1,
+            "intervals": [640],
+            "interval_weights": [1],
+            "interval_transaction_costs": 0.25,
+            "initial_lr": 3e-4,
+            "final_lr": 1e-5,
+            "clip_range": 0.2,
+            "batch_size": 64,
+            "n_epochs": 12,
+            "reward_function_index": 3
+        },
+        {
+            "percentage": 15,
+            "intervals": [1280, 1664, 3328, 4992, 6656],
+            "interval_weights": [6, 4, 2, 2, 1],
+            "interval_transaction_costs": 0.5,
+            "initial_lr": 3e-4,
+            "final_lr": 1e-5,
+            "clip_range": 0.2,
+            "batch_size": 64,
+            "n_epochs": 5,
+            "reward_function_index": 1
+        },
+        {
+            "percentage": 1,
+            "intervals": [640],
+            "interval_weights": [1],
+            "interval_transaction_costs": 0.5,
+            "initial_lr": 3e-4,
+            "final_lr": 1e-5,
+            "clip_range": 0.2,
+            "batch_size": 64,
+            "n_epochs": 12,
+            "phase_timesteps": 30000,
+            "reward_function_index": 3
+        },
+        {
+            "percentage": 15,
+            "intervals": [3328, 4992, 6656],
+            "interval_weights": [4, 2, 1],
+            "interval_transaction_costs": 1.0,
+            "initial_lr": 2e-4,
+            "final_lr": 1e-5,
+            "clip_range": 0.2,
+            "batch_size": 64,
+            "n_epochs": 5,
+            "reward_function_index": 1
+        },
+        {
+            "percentage": 1,
+            "intervals": [640],
+            "interval_weights": [1],
+            "interval_transaction_costs": 1.0,
+            "initial_lr": 2e-4,
+            "final_lr": 1e-5,
+            "clip_range": 0.2,
+            "batch_size": 64,
+            "n_epochs": 12,
+            "reward_function_index": 3
+        },
+        {
+            "percentage": 15,
+            "intervals": [3328, 4992, 6656, 9984],
+            "interval_weights": [2, 2, 1, 1],
+            "interval_transaction_costs": 2.0,
+            "initial_lr": 1e-4,
+            "final_lr": 1e-5,
+            "clip_range": 0.2,
+            "batch_size": 64,
+            "n_epochs": 4,
+            "reward_function_index": 2
+        },
+        {
+            "percentage": 1,
+            "intervals": [640],
+            "interval_weights": [1],
+            "interval_transaction_costs": 2.0,
+            "initial_lr": 1e-4,
+            "final_lr": 1e-5,
+            "clip_range": 0.2,
+            "batch_size": 64,
+            "n_epochs": 12,
+            "reward_function_index": 3
+        }
+    ],
+    "model_path": "coinbase_api/ml_models/rl_model.pkl",
+    "log_dir": "/logs"
+}

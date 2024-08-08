@@ -1,0 +1,119 @@
+{
+    "total_timesteps": 1000000.0,
+    "phases": [
+        {
+            "percentage": 10,
+            "intervals": [
+                1664,
+                3328,
+                4992,
+                6656
+            ],
+            "interval_weights": [
+                10,
+                8,
+                6,
+                4
+            ],
+            "interval_transaction_costs": 0.0,
+            "initial_lr": 0.0003,
+            "final_lr": 1e-05,
+            "clip_range": 0.2,
+            "n_steps": 1664,
+            "batch_size": 64,
+            "n_epochs": 10,
+            "phase_timesteps": 98336
+        },
+        {
+            "percentage": 15,
+            "intervals": [
+                1664,
+                3328,
+                4992,
+                6656
+            ],
+            "interval_weights": [
+                8,
+                6,
+                4,
+                2
+            ],
+            "interval_transaction_costs": 0.5,
+            "initial_lr": 0.0003,
+            "final_lr": 1e-05,
+            "clip_range": 0.2,
+            "n_steps": 1664,
+            "batch_size": 64,
+            "n_epochs": 10,
+            "phase_timesteps": 150000
+        },
+        {
+            "percentage": 20,
+            "intervals": [
+                1664,
+                3328,
+                4992,
+                6656
+            ],
+            "interval_weights": [
+                6,
+                4,
+                2,
+                1
+            ],
+            "interval_transaction_costs": 1.0,
+            "initial_lr": 0.0003,
+            "final_lr": 1e-05,
+            "clip_range": 0.2,
+            "n_steps": 1664,
+            "batch_size": 64,
+            "n_epochs": 10,
+            "phase_timesteps": 200000
+        },
+        {
+            "percentage": 25,
+            "intervals": [
+                3328,
+                6656,
+                9984
+            ],
+            "interval_weights": [
+                4,
+                2,
+                1
+            ],
+            "interval_transaction_costs": 1.5,
+            "initial_lr": 0.0002,
+            "final_lr": 1e-05,
+            "clip_range": 0.2,
+            "n_steps": 1664,
+            "batch_size": 64,
+            "n_epochs": 10,
+            "phase_timesteps": 250000
+        },
+        {
+            "percentage": 30,
+            "intervals": [
+                3328,
+                6656,
+                9984
+            ],
+            "interval_weights": [
+                2,
+                1,
+                1
+            ],
+            "interval_transaction_costs": 2.0,
+            "initial_lr": 0.0001,
+            "final_lr": 1e-05,
+            "clip_range": 0.2,
+            "n_steps": 1664,
+            "batch_size": 64,
+            "n_epochs": 10,
+            "phase_timesteps": 300000
+        }
+    ],
+    "model_path": "coinbase_api/ml_models/rl_model.pkl",
+    "log_dir": "/logs",
+    "current_stage": 4
+}

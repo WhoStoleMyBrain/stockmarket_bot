@@ -237,14 +237,15 @@ class Prediction(models.Model):
     predicted_field = models.CharField(max_length=50, db_index=True)  # e.g. 'open', 'close', 'high', 'low', 'volume'
     crypto = models.CharField(max_length=50, db_index=True, default='Bitcoin')
     predicted_value = models.FloatField(null=True)
-    # any other fields you need...
 
     class Meta:
-        unique_together = ['timestamp_predicted_for', 'model_name', 'predicted_field', 'crypto']  # To ensure unique combination of these fields
+        unique_together = ['timestamp_predicted_for', 'model_name', 'predicted_field', 'crypto']
         indexes = [
-                    models.Index(fields=['timestamp_predicted_for', 'crypto']),
-                    models.Index(fields=['crypto', 'model_name', 'predicted_field']),
-                ]
+            models.Index(fields=['timestamp_predicted_for', 'crypto', 'model_name', 'predicted_field']),
+            models.Index(fields=['crypto', 'model_name', 'predicted_field']),
+            models.Index(fields=['timestamp_predicted_for', 'crypto']),
+        ]
+
 class Account(models.Model):
     name = models.CharField(max_length=255)
     uuid = models.UUIDField()

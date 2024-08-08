@@ -78,14 +78,14 @@ services:
       - historical_data:/var/lib/postgresql/data
       - ./init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
 
-  tensorboard:
-    image: tensorflow/tensorflow:latest-py3
-    command: tensorboard --logdir=/logs --host=0.0.0.0
-    volumes:
-      - tensorboard_logs:/logs  # Mount the shared volume
-    ports:
-      - "6006:6006"
-    container_name: tensorboard
+  # tensorboard:
+  #   image: tensorflow/tensorflow:latest-py3
+  #   command: tensorboard --logdir=/logs --host=0.0.0.0
+  #   volumes:
+  #     - tensorboard_logs:/logs  # Mount the shared volume
+  #   ports:
+  #     - "6006:6006"
+  #   container_name: tensorboard
     
 volumes:
   postgres_data:
