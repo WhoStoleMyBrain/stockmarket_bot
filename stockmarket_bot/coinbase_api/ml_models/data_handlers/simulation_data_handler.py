@@ -104,6 +104,7 @@ class SimulationDataHandler:
 
 
     def fetch_all_prediction_data(self) -> Dict[str, Dict[datetime, List[float]]]:
+        start_time = time.time()
         # Initialize the dictionary for storing prediction data
         prediction_data = {crypto.symbol: {} for crypto in self.crypto_models}
         # Define the time range for fetching predictions
@@ -125,6 +126,8 @@ class SimulationDataHandler:
             if timestamp not in prediction_data[symbol]:
                 prediction_data[symbol][timestamp] = [0.0] * 6  # 3 for LSTM and 3 for XGBoost
             prediction_data[symbol][timestamp][index] = pred['predicted_value']
+        end_time = time.time() - start_time
+        print(f'time to fetch all predictions: {end_time:.2f} = {len(crypto_models)} * {end_time / len(crypto_models):.3f}')
         return prediction_data
 
     def get_earliest_timestamp(self) -> datetime:
@@ -180,7 +183,7 @@ class SimulationDataHandler:
         buy_indices = [(idx, i) for idx, i in enumerate(action[1:]) if i > self.action_factor]
         sell_indices = [(idx, i) for idx, i in enumerate(action[1:]) if i < -self.action_factor]
         hold_usdc = action[0] < 0  # First action is for holding USDC
-        available_liquidity = self.get_liquidity() - sum(self.costs_for_action)
+        available_liquidity = self.usdc_held - sum(self.costs_for_action)
         N = 5
         top_buy_indices = sorted(buy_indices, key=lambda x: -x[1])[:N]
         if not hold_usdc:
@@ -268,7 +271,6 @@ class SimulationDataHandler:
                 self.buffer = 2*self.total_steps
                 self.initial_timestamp = self.get_starting_timestamp()
                 self.timestamp = self.initial_timestamp
-                self.initial_prices = self.get_initial_crypto_prices()
                 self.dataframe_cache = self.fetch_all_historical_data()
                 self.prediction_cache = self.fetch_all_prediction_data()
                 self.prepare_simulation_database()
@@ -424,7 +426,7 @@ class SimulationDataHandler:
         
         # Penalize if holding USDT is less than 0
         holding_penalty = 0
-        if action[0] < 0:
+        if action[0] > 0:
             holding_penalty = 5  # Adjust the penalty factor as needed
 
         reward = net_return * 0.25 + cumulative_reward * 1.0 - transaction_costs * 0.5 - holding_penalty

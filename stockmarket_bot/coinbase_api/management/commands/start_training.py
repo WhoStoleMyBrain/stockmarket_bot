@@ -1,16 +1,13 @@
 from django.core.management.base import BaseCommand, CommandError
 import os
 from stable_baselines3 import PPO
-from stable_baselines3.common.callbacks import CheckpointCallback, BaseCallback
+from stable_baselines3.common.callbacks import CheckpointCallback
 from coinbase_api.ml_models.RL_decider_model import CustomEnv
 import traceback
 import json
 import shutil
-import numpy as np
-from stable_baselines3.common.vec_env import VecNormalize, SubprocVecEnv
 from coinbase_api.ml_models.data_handlers.simulation_data_handler import SimulationDataHandler
 from coinbase_api.ml_models.rl_model_logging_callback import RLModelLoggingCallback
-from coinbase_api.constants import crypto_models, crypto_extra_features, crypto_features, crypto_predicted_features
 
 CONFIG_FILE_PATH = 'coinbase_api/ml_models/training_configs/training_config_1.json'
 ACTIVE_TRAININGS_PATH = 'coinbase_api/ml_models/active_trainings'
@@ -188,6 +185,6 @@ class Command(BaseCommand):
                     config['current_stage'] = phase_index
                     config['phases'][phase_index] = phase
                     self.save_config(config, config_path)
-                    break
+                    continue
 
         print(f'Training completed over total timesteps: {total_timesteps}')
