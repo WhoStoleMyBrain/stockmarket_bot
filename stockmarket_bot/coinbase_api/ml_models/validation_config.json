@@ -1,0 +1,36 @@
+{
+    "scenarios": [
+        {
+            "name": "constant_gain",
+            "total_steps": 50000,
+            "synthetic_config": {
+                "type": "constant",
+                "slope": 0.01
+            }
+        },
+        {
+            "name": "constant_loss",
+            "total_steps": 50000,
+            "synthetic_config": {
+                "type": "constant",
+                "slope": -0.01
+            }
+        },
+        {
+            "name": "exponential_gain",
+            "total_steps": 50000,
+            "synthetic_config": {
+                "type": "exponential",
+                "rate": 0.01
+            }
+        },
+        {
+            "name": "exponential_loss",
+            "total_steps": 50000,
+            "synthetic_config": {
+                "type": "exponential",
+                "rate": -0.01
+            }
+        }
+    ]
+}

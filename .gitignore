@@ -140,3 +140,4 @@ GitHub.sublime-settings
 
 # Tensorboard Logs
 # **events.out.tfevents**
+**/coinbase_api/ml_models/active_trainings

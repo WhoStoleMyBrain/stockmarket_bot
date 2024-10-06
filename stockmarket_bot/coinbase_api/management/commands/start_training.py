@@ -6,6 +6,7 @@ from coinbase_api.ml_models.RL_decider_model import CustomEnv
 import traceback
 import json
 import shutil
+from coinbase_api.ml_models.custom_policy import CustomPolicy
 from coinbase_api.ml_models.data_handlers.simulation_data_handler import SimulationDataHandler
 from coinbase_api.ml_models.rl_model_logging_callback import RLModelLoggingCallback
 
@@ -89,6 +90,11 @@ class Command(BaseCommand):
         config = self.load_config(config_path)
         total_timesteps = config.get('total_timesteps', 1e6)
         phases = config.get('phases', [])
+        policy_parameters = config.get('policy_parameters', {})
+        net_arch = policy_parameters.get('net_arch', {
+            "pi": [512, 256, 128],  # Default values if not provided
+            "vf": [512, 256, 128]
+        })
         current_stage = config.get('current_stage', 0)
 
         for phase_index, phase in enumerate(phases):
@@ -120,7 +126,7 @@ class Command(BaseCommand):
                 print(f"Active Training Path: {active_training_path}")
                 print(f"Phase Index: {phase_index}")
                 print(f"Total Phases Length: {len(phases)}")
-                print(f"Interval: {interval} (Index in Interval List: {interval_index}/{len(interval_list)})")
+                print(f"Interval: {interval} (Index in Interval List:{interval_index} ({interval_index % len(interval_list)})/{len(interval_list)})")
                 print(f"Transaction Costs: {interval_transaction_costs}")
                 print(f"Phase Timesteps: {phase_timesteps}")
                 print(f"Initial LR: {initial_lr}")
@@ -128,6 +134,7 @@ class Command(BaseCommand):
                 print(f"Clip Range: {clip_range}")
                 print(f"Batch Size: {batch_size}")
                 print(f"N Epochs: {n_epochs}")
+                print(f"net_arch: {net_arch}")
 
                 print(f'Starting training with interval: {interval}')
                 if self.model is None or self.model.n_steps != interval:
@@ -139,7 +146,8 @@ class Command(BaseCommand):
                     else:
                         env = CustomEnv(data_handler=SimulationDataHandler(total_steps=interval, transaction_cost_factor=interval_transaction_costs))
                         self.model = PPO(
-                            "MlpPolicy",
+                            CustomPolicy,
+                            policy_kwargs={"net_arch": net_arch},
                             env=env,
                             verbose=0,
                             tensorboard_log=log_dir,
@@ -172,7 +180,6 @@ class Command(BaseCommand):
                         callback=[RLModelLoggingCallback(), checkpoint_callback]
                     )
                     self.model.save(model_path)
-                    # print(f'{interval_index % len(interval_list)}/{len(interval_list)} finished. total volume: {self.model.env.data_handler.total_volume}')
                     phase_timesteps -= interval
                     phase['phase_timesteps'] = phase_timesteps
                     config['current_stage'] = phase_index

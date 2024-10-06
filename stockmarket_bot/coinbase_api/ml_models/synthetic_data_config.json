@@ -1,0 +1,28 @@
+{
+    "synthetic_scenarios": [
+        {
+            "name": "constant_gain",
+            "type": "linear",
+            "gain_per_step": 0.01,
+            "noise_level": 0.001
+        },
+        {
+            "name": "constant_loss",
+            "type": "linear",
+            "gain_per_step": -0.01,
+            "noise_level": 0.001
+        },
+        {
+            "name": "exponential_gain",
+            "type": "exponential",
+            "growth_rate": 0.005,
+            "noise_level": 0.001
+        },
+        {
+            "name": "exponential_loss",
+            "type": "exponential",
+            "growth_rate": -0.005,
+            "noise_level": 0.001
+        }
+    ]
+}
