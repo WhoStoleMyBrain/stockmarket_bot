@@ -1,0 +1,178 @@
+{
+    "scenarios": [
+      {
+        "name": "Linear_Gain_Low_Slope",
+        "type": "linear",
+        "total_steps": 1000,
+        "synthetic_config": {
+          "slope": 0.01,
+          "base_value": 1000,
+          "transaction_cost": 0.001
+        }
+      },
+      {
+        "name": "Linear_Gain_High_Slope",
+        "type": "linear",
+        "total_steps": 1000,
+        "synthetic_config": {
+          "slope": 0.05,
+          "base_value": 1000,
+          "transaction_cost": 0.002
+        }
+      },
+      {
+        "name": "Exponential_Gain_Slow",
+        "type": "exponential",
+        "total_steps": 1000,
+        "synthetic_config": {
+          "growth_rate": 0.005,
+          "base_value": 1000,
+          "transaction_cost": 0.001
+        }
+      },
+      {
+        "name": "Exponential_Gain_Fast",
+        "type": "exponential",
+        "total_steps": 1000,
+        "synthetic_config": {
+          "growth_rate": 0.01,
+          "base_value": 1000,
+          "transaction_cost": 0.002
+        }
+      },
+      {
+        "name": "Constant_Market",
+        "type": "constant",
+        "total_steps": 1000,
+        "synthetic_config": {
+          "constant_value": 1000,
+          "transaction_cost": 0.0
+        }
+      },
+      {
+        "name": "Volatile_Market_Low_Volatility",
+        "type": "volatile",
+        "total_steps": 1000,
+        "synthetic_config": {
+          "volatility_level": 0.02,
+          "base_value": 1000,
+          "transaction_cost": 0.001
+        }
+      },
+      {
+        "name": "Volatile_Market_High_Volatility",
+        "type": "volatile",
+        "total_steps": 1000,
+        "synthetic_config": {
+          "volatility_level": 0.05,
+          "base_value": 1000,
+          "transaction_cost": 0.002
+        }
+      },
+      {
+        "name": "Bear_Market_Small_Decline",
+        "type": "bear",
+        "total_steps": 1000,
+        "synthetic_config": {
+          "slope": -0.01,
+          "base_value": 1000,
+          "transaction_cost": 0.001
+        }
+      },
+      {
+        "name": "Bear_Market_Steep_Decline",
+        "type": "bear",
+        "total_steps": 1000,
+        "synthetic_config": {
+          "slope": -0.05,
+          "base_value": 1000,
+          "transaction_cost": 0.002
+        }
+      },
+      {
+        "name": "Market_Crash_Fast_Recovery",
+        "type": "crash",
+        "total_steps": 1000,
+        "synthetic_config": {
+          "crash_time": 500,
+          "severity": 0.5,
+          "recovery_rate": 0.01,
+          "base_value": 1000,
+          "transaction_cost": 0.002
+        }
+      },
+      {
+        "name": "Market_Crash_Slow_Recovery",
+        "type": "crash",
+        "total_steps": 1000,
+        "synthetic_config": {
+          "crash_time": 500,
+          "severity": 0.75,
+          "recovery_rate": 0.005,
+          "base_value": 1000,
+          "transaction_cost": 0.002
+        }
+      },
+      {
+        "name": "Historical_June_August",
+        "type": "historical",
+        "total_steps": 1000,
+        "synthetic_config": {
+          "start_date": "2024-06-01",
+          "end_date": "2024-08-31",
+          "transaction_cost": 0.001
+        }
+      },
+      {
+        "name": "Multi_Year_Simulation_2_Years",
+        "type": "multi_year",
+        "total_steps": 17520,
+        "synthetic_config": {
+          "start_date": "2020-01-01",
+          "end_date": "2021-12-31",
+          "transaction_cost": 0.001
+        }
+      },
+      {
+        "name": "Stress_Test_High_Volatility_Low_Liquidity",
+        "type": "stress_test",
+        "total_steps": 1000,
+        "synthetic_config": {
+          "volatility": 0.08,
+          "spread": 10,
+          "liquidity": 500,
+          "transaction_cost": 0.005
+        }
+      },
+      {
+        "name": "Stress_Test_Low_Volatility_High_Liquidity",
+        "type": "stress_test",
+        "total_steps": 1000,
+        "synthetic_config": {
+          "volatility": 0.02,
+          "spread": 2,
+          "liquidity": 10000,
+          "transaction_cost": 0.001
+        }
+      },
+      {
+        "name": "Edge_Case_Near_Zero_Volume",
+        "type": "edge_case",
+        "total_steps": 1000,
+        "synthetic_config": {
+          "scenario": "near_zero_volume",
+          "transaction_cost": 0.002
+        }
+      },
+      {
+        "name": "Edge_Case_Sudden_Spike",
+        "type": "edge_case",
+        "total_steps": 1000,
+        "synthetic_config": {
+          "scenario": "sudden_spike",
+          "transaction_cost": 0.002
+        }
+      }
+    ]
+  }
+  

@@ -9,6 +9,8 @@ from ..enums import Method, OrderStatus
 from django.shortcuts import render
 from django.http import HttpResponse
 from django.core.management import call_command
+from django.core import serializers
+from coinbase.rest.types.accounts_types import GetAccountResponse, ListAccountsResponse
 
 cb_auth = CBAuth()
 cb_auth.set_credentials(API_KEY, API_SECRET)
@@ -215,10 +217,14 @@ def cb_list_accounts(request):
     size
     '''
     try:
-        data = cb_auth.restClientInstance.get_accounts()
+        data:ListAccountsResponse = cb_auth.restClientInstance.get_accounts()
+        print(f"data: {data.accounts}")
     except requests.RequestException as e:
         return JsonResponse({'error': str(e)}, status=500)
-    return JsonResponse(data)
+    if (data != None):
+        return JsonResponse(data.accounts, safe=False)
+    else:
+        return JsonResponse("No Data found!")
 
 def cb_get_account(request):
     '''

@@ -1,11 +1,10 @@
-version: '3'
-
 services:
   web:
     build:
       context: .
       dockerfile: Dockerfile
-    command: bash -c "pip install debugpy -t /tmp && python manage.py migrate && python /tmp/debugpy --wait-for-client --listen 0.0.0.0:5678 manage.py runserver 0.0.0.0:8000"
+    command: python manage.py runserver 0.0.0.0:8000
+    # command: bash -c "pip install debugpy -t /tmp && python manage.py migrate && python /tmp/debugpy --wait-for-client --listen 0.0.0.0:5678 manage.py runserver 0.0.0.0:8000"
     volumes:
       - .:/app
       - tensorboard_logs:/logs  # Mount the shared volume

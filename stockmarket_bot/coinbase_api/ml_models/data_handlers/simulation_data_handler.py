@@ -11,17 +11,16 @@ import time
 import logging
 
 class SimulationDataHandler:
-    def __init__(self, initial_volume=1000, total_steps=1024, transaction_cost_factor=1.0, reward_function_index=0, synthetic_data_config=None) -> None:
+    def __init__(self, initial_volume=1000, total_steps=1024, transaction_cost_factor=1.0, reward_function_index=0, noise_level=0.01) -> None:
         logging.basicConfig(
             filename='simulation.log',
             level=logging.INFO,
             format='%(asctime)s %(levelname)s:%(message)s'
         )
-        self.synthetic_data_config = synthetic_data_config
-        self.use_synthetic_data = synthetic_data_config is not None
         self.timestamp_to_index = {}
         self.holding_actions = []
         self.timing_count = 0
+        self.noise_level = noise_level
         self.logger = logging.getLogger(__name__)
         self.reward_function_index = reward_function_index
         reward_function_index_max = 2
@@ -51,103 +50,13 @@ class SimulationDataHandler:
         self.buffer = 2*total_steps
         self.initial_timestamp = self.get_starting_timestamp()
         self.timestamp = self.initial_timestamp
-        if self.use_synthetic_data:
-            self.dataframe_cache = self.generate_synthetic_data()
-        else:
-            self.dataframe_cache = self.fetch_all_historical_data()
+        self.dataframe_cache = self.fetch_all_historical_data()
         self.prediction_cache = self.fetch_all_prediction_data()
         # self.symbol_indices = np.array([self.symbol_to_index[symbol] for symbol in self.symbols])
         self.state = self.get_current_state()
         self.past_volumes = []
         self.short_term_reward_window = 10
         self._initialized = True
-        
-    def generate_synthetic_data(self) -> Dict[str, pd.DataFrame]:
-        """
-        Generate synthetic data based on the synthetic_data_config.
-        """
-        config = self.synthetic_data_config
-        dataframes = {}
-        timestamps = pd.date_range(start=self.initial_timestamp, periods=self.total_steps, freq='H')
-        columns = ['timestamp', 'close', 'volume', 'sma', 'ema', 'rsi', 'macd', 'bollinger_high', 'bollinger_low', 'vmap', 'percentage_returns', 'log_returns']
-
-        for crypto_model in self.crypto_models:
-            if config['type'] == 'linear':
-                df = self.generate_linear_data(timestamps, config['slope'], config['base_value'])
-            elif config['type'] == 'exponential':
-                df = self.generate_exponential_data(timestamps, config['slope'], config['base_value'])
-            elif config['type'] == 'constant':
-                df = self.generate_constant_data(timestamps, config['constant_value'])
-            else:
-                raise ValueError(f"Unknown synthetic data type: {config['type']}")
-
-            df = self.add_noise_to_dataframe(df, columns=columns[1:], noise_level=config.get('noise_level', 0.01))
-            df['timestamp'] = timestamps
-            df['symbol'] = crypto_model.symbol
-            df.set_index('timestamp', inplace=True)
-            dataframes[crypto_model.symbol] = df
-
-        return dataframes
-    
-    def generate_linear_data(self, timestamps, slope, base_value) -> pd.DataFrame:
-        """
-        Generate synthetic data with a linear trend.
-        """
-        length = len(timestamps)
-        data = {
-            'close': np.linspace(base_value, base_value + slope * length, length),
-            'volume': np.ones(length) * 1000,  # Example: constant volume
-            'sma': np.linspace(base_value, base_value + slope * length, length),
-            'ema': np.linspace(base_value, base_value + slope * length, length),
-            'rsi': np.ones(length) * 50,  # Example: constant RSI
-            'macd': np.linspace(-5, 5, length),
-            'bollinger_high': np.linspace(base_value + 5, base_value + slope * length + 5, length),
-            'bollinger_low': np.linspace(base_value - 5, base_value + slope * length - 5, length),
-            'vmap': np.linspace(base_value, base_value + slope * length, length),
-            'percentage_returns': np.zeros(length),
-            'log_returns': np.zeros(length)
-        }
-        return pd.DataFrame(data)
-    
-    def generate_exponential_data(self, timestamps, slope, base_value) -> pd.DataFrame:
-        """
-        Generate synthetic data with an exponential trend.
-        """
-        length = len(timestamps)
-        data = {
-            'close': base_value * np.exp(slope * np.arange(length)),
-            'volume': np.ones(length) * 1000,  # Example: constant volume
-            'sma': base_value * np.exp(slope * np.arange(length)),
-            'ema': base_value * np.exp(slope * np.arange(length)),
-            'rsi': np.ones(length) * 50,  # Example: constant RSI
-            'macd': np.linspace(-5, 5, length),
-            'bollinger_high': base_value * np.exp(slope * np.arange(length)) + 5,
-            'bollinger_low': base_value * np.exp(slope * np.arange(length)) - 5,
-            'vmap': base_value * np.exp(slope * np.arange(length)),
-            'percentage_returns': np.zeros(length),
-            'log_returns': np.zeros(length)
-        }
-        return pd.DataFrame(data)
-
-    def generate_constant_data(self, timestamps, constant_value) -> pd.DataFrame:
-        """
-        Generate synthetic data with a constant value.
-        """
-        length = len(timestamps)
-        data = {
-            'close': np.ones(length) * constant_value,
-            'volume': np.ones(length) * 1000,  # Example: constant volume
-            'sma': np.ones(length) * constant_value,
-            'ema': np.ones(length) * constant_value,
-            'rsi': np.ones(length) * 50,  # Example: constant RSI
-            'macd': np.zeros(length),
-            'bollinger_high': np.ones(length) * (constant_value + 5),
-            'bollinger_low': np.ones(length) * (constant_value - 5),
-            'vmap': np.ones(length) * constant_value,
-            'percentage_returns': np.zeros(length),
-            'log_returns': np.zeros(length)
-        }
-        return pd.DataFrame(data)
 
     def fetch_all_historical_data(self) -> Dict[str, pd.DataFrame]:
         dataframes = {}
@@ -178,9 +87,10 @@ class SimulationDataHandler:
             # Ensure no negative or zero values for critical columns
             for column in ['close', 'volume']:
                 df[column] = df[column].apply(lambda x: max(x, 0))
-            df = self.add_noise_to_dataframe(df, columns=['close', 'volume', 'sma', 'ema', 'rsi', 'macd', 
-                                                 'bollinger_high', 'bollinger_low', 'vmap', 
-                                                 'percentage_returns', 'log_returns'], noise_level=0.01)
+            if (self.noise_level > 0):
+                df = self.add_noise_to_dataframe(df, columns=['close', 'volume', 'sma', 'ema', 'rsi', 'macd', 
+                                                    'bollinger_high', 'bollinger_low', 'vmap', 
+                                                    'percentage_returns', 'log_returns'], noise_level=self.noise_level)
             dataframes[crypto_model.symbol] = df
             if not self.timestamp_to_index:
                 self.timestamp_to_index = {timestamp: idx for idx, timestamp in enumerate(df.index)}
