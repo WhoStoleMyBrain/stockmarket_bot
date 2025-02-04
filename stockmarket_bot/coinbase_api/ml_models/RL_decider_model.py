@@ -3,11 +3,9 @@ from typing import Any, Dict, List, Tuple
 import gymnasium as gym
 from gymnasium import spaces
 from coinbase_api.ml_models.data_handlers.abstract_data_handler import AbstractDataHandler
-from coinbase_api.utilities.utils import calculate_total_volume, initialize_default_cryptos
 import numpy as np
 import numpy.typing as npt
 from ..constants import crypto_models, crypto_features, crypto_predicted_features, crypto_extra_features
-from ..enums import Actions
 
 # Configure logging
 logging.basicConfig(
