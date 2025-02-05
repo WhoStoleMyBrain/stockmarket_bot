@@ -21,7 +21,8 @@ class CustomEnv(gym.Env):
         self.crypto_models = crypto_models
         self.data_handler = data_handler
         self.transaction_cost_factor = transaction_cost_factor
-        N = len(self.crypto_models) + 1 #! Hard-coded USDC holding action in first place
+        N = 1 + 1 #! Hard-coded USDC holding action in first place
+        # N = len(self.crypto_models) + 1 #! Hard-coded USDC holding action in first place
         self.action_space = spaces.Box(low=-1, high=1, shape=(N,), dtype=np.float32)  # where N is the number of cryptocurrencies
         M = len(self.get_crypto_features()) + len(self.get_crypto_predicted_features()) + len(self.get_extra_features())
         shape_value = M * (N - 1) + 2  # +1 because of total volume held and USDC value held, N - 1 because hard coded USDC Holding action is not part of the input

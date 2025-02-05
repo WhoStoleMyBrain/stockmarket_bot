@@ -9,6 +9,7 @@ import shutil
 from coinbase_api.ml_models.custom_policy import CustomPolicy
 from coinbase_api.ml_models.data_handlers.simulation_data_handler import SimulationDataHandler
 from coinbase_api.ml_models.rl_model_logging_callback import RLModelLoggingCallback
+from coinbase_api.models.generated_models import BTC
 
 CONFIG_FILE_PATH = 'coinbase_api/ml_models/training_configs/training_config_1.json'
 ACTIVE_TRAININGS_PATH = 'coinbase_api/ml_models/active_trainings'
@@ -140,11 +141,11 @@ class Command(BaseCommand):
                 if self.model is None or self.model.n_steps != interval:
                     if os.path.exists(model_path):
                         print('Loaded model!')
-                        env = CustomEnv(data_handler=SimulationDataHandler(total_steps=interval, transaction_cost_factor=interval_transaction_costs))
+                        env = CustomEnv(data_handler=SimulationDataHandler(BTC ,total_steps=interval, transaction_cost_factor=interval_transaction_costs))
                         self.model = PPO.load(model_path, env=env)
                         self.model.tensorboard_log = log_dir
                     else:
-                        env = CustomEnv(data_handler=SimulationDataHandler(total_steps=interval, transaction_cost_factor=interval_transaction_costs))
+                        env = CustomEnv(data_handler=SimulationDataHandler(BTC, total_steps=interval, transaction_cost_factor=interval_transaction_costs))
                         self.model = PPO(
                             CustomPolicy,
                             policy_kwargs={"net_arch": net_arch},
@@ -175,7 +176,7 @@ class Command(BaseCommand):
                         total_timesteps=interval,
                         progress_bar=True,
                         reset_num_timesteps=False,
-                        tb_log_name=f"ModelV1_{interval}_{interval_transaction_costs}",
+                        tb_log_name=f"ModelV2_{interval}_{interval_transaction_costs}",
                         log_interval=1,
                         callback=[RLModelLoggingCallback(), checkpoint_callback]
                     )

@@ -11,12 +11,13 @@ import time
 import logging
 
 class SimulationDataHandler:
-    def __init__(self, initial_volume=1000, total_steps=1024, transaction_cost_factor=1.0, reward_function_index=0, noise_level=0.01) -> None:
+    def __init__(self, crypto: AbstractOHLCV, initial_volume=1000, total_steps=1024, transaction_cost_factor=1.0, reward_function_index=0, noise_level=0.01) -> None:
         logging.basicConfig(
             filename='simulation.log',
             level=logging.INFO,
             format='%(asctime)s %(levelname)s:%(message)s'
         )
+        self.crypto = crypto
         self.timestamp_to_index = {}
         self.holding_actions = []
         self.timing_count = 0
@@ -35,14 +36,12 @@ class SimulationDataHandler:
         self.step_count = 0
         self.feature_indices = [i for i, feature in enumerate(['timestamp', 'close', 'volume', 'sma', 'ema', 'rsi', 'macd', 'bollinger_high', 'bollinger_low', 'vmap', 'percentage_returns', 'log_returns']) if feature in crypto_features]
         self.usdc_held = initial_volume  # Initialize USDC account in memory
-        self.minimum_number_of_cryptos = 35
+        self.minimum_number_of_cryptos = 1 #? set to 1 because we will start handling data in sequence instead of parallel
         self.maker_fee = 0.0025  # 0.25% based on Advanced 1, might drop
         self.taker_fee = 0.004  # 0.4% based on Advanced 1, might drop
         self.initial_volume: float = initial_volume
-        self.crypto_models: List[AbstractOHLCV] = crypto_models
-        self.symbols = [crypto.symbol for crypto in self.crypto_models]
         self.total_volume = initial_volume
-        self.account_holdings = {crypto.symbol: 0.0 for crypto in self.crypto_models}
+        self.account_holdings = {self.crypto.symbol: 0.0}
         
         self.earliest_timestamp = self.get_earliest_timestamp()
         self.maximum_timestamp = self.get_maximum_timestamp()
@@ -51,7 +50,6 @@ class SimulationDataHandler:
         self.timestamp = self.initial_timestamp
         self.dataframe_cache = self.fetch_all_historical_data()
         self.prediction_cache = self.fetch_all_prediction_data()
-        # self.symbol_indices = np.array([self.symbol_to_index[symbol] for symbol in self.symbols])
         self.state = self.get_current_state()
         self.past_volumes = []
         self.short_term_reward_window = 10
@@ -61,40 +59,37 @@ class SimulationDataHandler:
         dataframes = {}
         start_timestamp = self.timestamp - timedelta(hours=self.lstm_sequence_length - 1)
         end_timestamp = self.timestamp + timedelta(hours=self.total_steps)
-        complete_index = pd.date_range(start=start_timestamp, end=end_timestamp, freq='H')
+        complete_index = pd.date_range(start=start_timestamp, end=end_timestamp, freq='5min')
         columns = ['timestamp', 'close', 'volume', 'sma', 'ema', 'rsi', 'macd', 'bollinger_high', 'bollinger_low', 'vmap', 'percentage_returns', 'log_returns']
+        data = self.crypto.objects.using(Database.HISTORICAL.value).filter(
+            timestamp__range=(start_timestamp, end_timestamp)
+        ).values(
+            'timestamp', 'close', 'volume', 'sma', 'ema', 'rsi', 'macd', 'bollinger_high', 'bollinger_low', 'vmap', 'percentage_returns', 'log_returns'
+        ).order_by('timestamp')
 
-        for crypto_model in self.crypto_models:
-            data = crypto_model.objects.using(Database.HISTORICAL.value).filter(
-                timestamp__range=(start_timestamp, end_timestamp)
-            ).values(
-                'timestamp', 'close', 'volume', 'sma', 'ema', 'rsi', 'macd', 'bollinger_high', 'bollinger_low', 'vmap', 'percentage_returns', 'log_returns'
-            ).order_by('timestamp')
+        df = pd.DataFrame(data)
+        if 'timestamp' not in df.columns or df.empty:
+            df = pd.DataFrame(columns=columns)
+        else:
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            df.set_index('timestamp', inplace=True)
+            df = df[~df.index.duplicated(keep='first')]
 
-            df = pd.DataFrame(data)
-            if 'timestamp' not in df.columns or df.empty:
-                df = pd.DataFrame(columns=columns)
-            else:
-                df['timestamp'] = pd.to_datetime(df['timestamp'])
-                df.set_index('timestamp', inplace=True)
-                df = df[~df.index.duplicated(keep='first')]
-
-            df = df.reindex(complete_index)
-            df['symbol'] = crypto_model.symbol
-            df['symbol'].fillna(crypto_model.symbol, inplace=True)
-            df.fillna(0, inplace=True)
-            # Ensure no negative or zero values for critical columns
-            for column in ['close', 'volume']:
-                df[column] = df[column].apply(lambda x: max(x, 0))
-            if (self.noise_level > 0):
-                df = self.add_noise_to_dataframe(df, columns=['close', 'volume', 'sma', 'ema', 'rsi', 'macd', 
-                                                    'bollinger_high', 'bollinger_low', 'vmap', 
-                                                    'percentage_returns', 'log_returns'], noise_level=self.noise_level)
-            dataframes[crypto_model.symbol] = df
-            if not self.timestamp_to_index:
-                self.timestamp_to_index = {timestamp: idx for idx, timestamp in enumerate(df.index)}
+        df = df.reindex(complete_index)
+        df['symbol'] = self.crypto.symbol
+        df['symbol'].fillna(self.crypto.symbol, inplace=True)
+        df.fillna(0, inplace=True)
+        # Ensure no negative or zero values for critical columns
+        for column in ['close', 'volume']:
+            df[column] = df[column].apply(lambda x: max(x, 0))
+        if (self.noise_level > 0):
+            df = self.add_noise_to_dataframe(df, columns=['close', 'volume', 'sma', 'ema', 'rsi', 'macd', 
+                                                'bollinger_high', 'bollinger_low', 'vmap', 
+                                                'percentage_returns', 'log_returns'], noise_level=self.noise_level)
+        dataframes[self.crypto.symbol] = df
+        if not self.timestamp_to_index:
+            self.timestamp_to_index = {timestamp: idx for idx, timestamp in enumerate(df.index)}
         self.dataframe_cache_np = self.convert_dataframe_cache_to_combined_numpy(dataframes)
-        # self.dataframe_cache_np = self.fetch_numpy_data_with_noise(dataframe_cache_np_raw, )
         return dataframes
     
     def add_noise_to_dataframe(self, df: pd.DataFrame, columns: List[str], noise_level: float = 0.01) -> pd.DataFrame:
@@ -113,25 +108,25 @@ class SimulationDataHandler:
     def convert_dataframe_cache_to_combined_numpy(self, dataframes: Dict[str, pd.DataFrame]) -> np.ndarray:
         timestamps = dataframes[next(iter(dataframes))].index
         num_features = len(crypto_features)
-        num_symbols = len(self.symbols)
+        num_symbols = 1
         
         # Initialize the combined array
         combined_data = np.zeros((len(timestamps), num_symbols * num_features))
-        for i, symbol in enumerate(self.symbols):
+        for i, symbol in enumerate([self.crypto.symbol]):
             combined_data[:, i * num_features:(i + 1) * num_features] = dataframes[symbol][crypto_features].to_numpy()
         return combined_data
 
     def fetch_all_prediction_data(self) -> Dict[str, Dict[datetime, List[float]]]:
         start_time = time.time()
         # Initialize the dictionary for storing prediction data
-        prediction_data = {crypto.symbol: {} for crypto in self.crypto_models}
+        prediction_data = {self.crypto.symbol: {}}
         # Define the time range for fetching predictions
-        start_timestamp = self.timestamp - timedelta(hours=self.lstm_sequence_length + 1)
-        end_timestamp = self.timestamp + timedelta(hours=self.total_steps)
+        start_timestamp = self.timestamp - timedelta(minutes=(self.lstm_sequence_length + 1) * 5)
+        end_timestamp = self.timestamp + timedelta(minutes=self.total_steps*5)
         # Fetch predictions from the database
         predictions = list(Prediction.objects.using(Database.HISTORICAL.value).filter(
             timestamp_predicted_for__range=(start_timestamp, end_timestamp),
-            crypto__in=[crypto.symbol for crypto in self.crypto_models]
+            crypto=self.crypto.symbol
         ).values(
             'timestamp_predicted_for', 'crypto', 'model_name', 'predicted_field', 'predicted_value'
         ).iterator())
@@ -149,24 +144,21 @@ class SimulationDataHandler:
         return prediction_data
 
     def get_earliest_timestamp(self) -> datetime:
-        all_information = CryptoMetadata.objects.using(Database.HISTORICAL.value).all()
-        timestamps = all_information.values_list("earliest_date").order_by("earliest_date")
-        return timestamps[self.minimum_number_of_cryptos][0]
+        crypto_info = CryptoMetadata.objects.using(Database.HISTORICAL.value).filter(symbol=CryptoMetadata.symbol_to_storage(self.crypto.symbol)).first()
+        return crypto_info.earliest_date
 
     def get_maximum_timestamp(self) -> datetime:
-        all_timestamps = []
-        for crypto_model in self.crypto_models:
-            try:
-                val = crypto_model.objects.using(Database.HISTORICAL.value).values_list("timestamp").order_by("-timestamp").first()
-                all_timestamps.append(val if val is not None else (datetime(year=2024, month=6, day=20),))
-            except crypto_model.DoesNotExist:
-                print(f'did not exist: {crypto_model.symbol}')
-                all_timestamps.append(crypto_model.default_entry(timestamp=datetime(year=2024, month=6, day=20)))
-            except AttributeError:
-                print(f'attribute error: {crypto_model.symbol}')
-                all_timestamps.append(crypto_model.default_entry(timestamp=datetime(year=2024, month=6, day=20)))
-        all_timestamps.sort()
-        return all_timestamps[0][0]
+        timestamp = None
+        try:
+            val = self.crypto.objects.using(Database.HISTORICAL.value).values_list("timestamp").order_by("-timestamp").first()
+            timestamp = val if val is not None else (datetime(year=2025, month=1, day=9),)
+        except self.crypto.DoesNotExist:
+            print(f'did not exist: {self.crypto.symbol}')
+            timestamp = self.crypto.default_entry(timestamp=datetime(year=2024, month=6, day=20))
+        except AttributeError:
+            print(f'attribute error: {self.crypto.symbol}')
+            timestamp = self.crypto.default_entry(timestamp=datetime(year=2024, month=6, day=20))
+        return timestamp.timestamp
 
     def get_starting_timestamp(self) -> datetime:
         if self.initial_timestamp is None:
@@ -202,37 +194,28 @@ class SimulationDataHandler:
         return random.randint(0, 100) < percentage
 
     def update_state(self, action) -> Tuple[npt.NDArray[np.float16], float, bool, Dict[Any, Any]]:
-        self.costs_for_action = self.cost_for_action(action[1:])  # Exclude the first action for costs calculation
-        
-        buy_indices = [(idx, i) for idx, i in enumerate(action[1:]) if i > self.action_factor]
-        sell_indices = [(idx, i) for idx, i in enumerate(action[1:]) if i < -self.action_factor]
+        self.costs_for_action = self.cost_for_action(action[1:])  # Exclude the first action for costs calculation. first action is usdc hold action
+        is_buy_action = action[1] > self.action_factor
+        is_sell_action = action[1] < self.action_factor
         hold_usdc = action[0] < 0  # First action is for holding USDC
         self.holding_actions.append(hold_usdc)
         available_liquidity = self.usdc_held - sum(self.costs_for_action)
-        N = 5
-        top_buy_indices = sorted(buy_indices, key=lambda x: -x[1])[:N]
-        if not hold_usdc:
-            total_buy_actions = sum([self.map_buy_action(buy_action, self.action_factor) for idx, buy_action in top_buy_indices])
-            individual_liquidity = available_liquidity / total_buy_actions if total_buy_actions > 0 else 0
-            for idx, buy_action in top_buy_indices:
-                if self.apply_latency():
-                    continue
-                crypto_model = self.crypto_models[idx]
+        if not hold_usdc and is_buy_action and not self.apply_latency():
+                buy_action = self.map_buy_action(action[1], self.action_factor)
                 buy_action_mapped = self.map_buy_action(buy_action, self.action_factor)
-                crypto_value = self.get_crypto_value_from_cache(crypto_model.symbol, self.timestamp)
-                buy_amount =  self.apply_slippage_to_value(individual_liquidity) * buy_action_mapped if crypto_value else 0
-                self.account_holdings[crypto_model.symbol] = max(self.account_holdings[crypto_model.symbol] + (buy_amount - self.costs_for_action[idx]) / crypto_value if crypto_value else self.account_holdings[crypto_model.symbol], 0)
+                crypto_value = self.get_crypto_value_from_cache(self.crypto.symbol, self.timestamp)
+                buy_amount =  self.apply_slippage_to_value(available_liquidity) * buy_action_mapped if crypto_value else 0
+                self.account_holdings[self.crypto.symbol] = max(self.account_holdings[self.crypto.symbol] + (buy_amount - self.costs_for_action[0]) / crypto_value if crypto_value else self.account_holdings[self.crypto.symbol], 0)
                 self.usdc_held = max(self.usdc_held - buy_amount, 0)
-        for idx, sell_action in sell_indices:
-            if self.apply_latency():
-                    continue
-            crypto_model = self.crypto_models[idx]
+        
+        if is_sell_action and not self.apply_latency():
+            sell_action = self.map_sell_action(action[1], self.action_factor)
             sell_action_mapped = self.map_sell_action(sell_action, self.action_factor)
-            crypto_value = self.get_crypto_value_from_cache(crypto_model.symbol, self.timestamp)
-            sell_amount = abs(self.account_holdings[crypto_model.symbol] * sell_action_mapped) if crypto_value else 0
-            self.usdc_held = max(self.usdc_held + self.apply_slippage_to_value(sell_amount) * crypto_value - self.costs_for_action[idx] if crypto_value else self.usdc_held, 0)
-            self.account_holdings[crypto_model.symbol] = max(self.account_holdings[crypto_model.symbol] - sell_amount, 0)
-        self.timestamp += timedelta(hours=1)
+            crypto_value = self.get_crypto_value_from_cache(self.crypto.symbol, self.timestamp)
+            sell_amount = abs(self.account_holdings[self.crypto.symbol] * sell_action_mapped) if crypto_value else 0
+            self.usdc_held = max(self.usdc_held + self.apply_slippage_to_value(sell_amount) * crypto_value - self.costs_for_action[0] if crypto_value else self.usdc_held, 0)
+            self.account_holdings[self.crypto.symbol] = max(self.account_holdings[self.crypto.symbol] - sell_amount, 0)
+        self.timestamp += timedelta(minutes=5)
         self.state = self.get_current_state()
         self.past_volumes.append(self.total_volume)
         if len(self.past_volumes) > self.short_term_reward_window:
@@ -244,18 +227,9 @@ class SimulationDataHandler:
 
     def get_crypto_value_from_cache(self, symbol: str, timestamp: datetime) -> float:
         return self.dataframe_cache[symbol].at[timestamp, 'close']
-
-    def get_crypto_data_from_cache(self, symbol: str, timestamp: datetime) -> List[float]:
-        df = self.dataframe_cache[symbol]
-        if timestamp in df.index:
-            row = df.loc[timestamp]
-            return [
-                row[feature] for feature in crypto_features
-            ]
-        return [0] * 10  # Return default values if the timestamp is not found
     
     def get_crypto_values_from_cache_vectorized(self, timestamp: datetime) -> np.ndarray:
-        return np.array([self.dataframe_cache[crypto.symbol].at[timestamp, 'close'] for crypto in self.crypto_models])
+        return np.array([self.dataframe_cache[self.crypto.symbol].at[timestamp, 'close']])
 
     def reset_state(self) -> npt.NDArray[np.float16]:
         self.logger.info("Resetting state")
@@ -272,10 +246,8 @@ class SimulationDataHandler:
         self.maker_fee = 0.0025  # 0.25% based on Advanced 1, might drop
         self.taker_fee = 0.004  # 0.4% based on Advanced 1, might drop
         self.initial_volume = self.initial_volume
-        self.crypto_models: List[AbstractOHLCV] = crypto_models
         self.total_volume = self.initial_volume
-        self.account_holdings = {crypto.symbol: 0 for crypto in self.crypto_models}
-        self.symbols = [crypto.symbol for crypto in self.crypto_models]
+        self.account_holdings = {self.crypto.symbol: 0 }
         self.feature_indices = [i for i, feature in enumerate(['timestamp', 'close', 'volume', 'sma', 'ema', 'rsi', 'macd', 'bollinger_high', 'bollinger_low', 'vmap', 'percentage_returns', 'log_returns']) if feature in crypto_features]
         
         if not hasattr(self, '_initialized'):
@@ -286,7 +258,6 @@ class SimulationDataHandler:
             self.initial_timestamp = self.get_starting_timestamp()
             self.timestamp = self.initial_timestamp
             self.dataframe_cache = self.fetch_all_historical_data()
-            # self.symbol_indices = np.array([self.symbol_to_index[symbol] for symbol in self.symbols])
             self.prediction_cache = self.fetch_all_prediction_data()
             self.prepare_simulation_database()
         else:
@@ -344,8 +315,7 @@ class SimulationDataHandler:
 
     def get_new_prediction_data(self, timestamp: datetime) -> Dict[str, List[float]]:
         all_entries = {
-            crypto.symbol: self.prediction_cache[crypto.symbol].get(timestamp, [0.0] * 6)
-            for crypto in self.crypto_models
+            self.crypto.symbol: self.prediction_cache[self.crypto.symbol].get(timestamp, [0.0] * 6)
         }
         return all_entries
 
@@ -366,8 +336,8 @@ class SimulationDataHandler:
             raise ValueError(f"Timestamp {self.timestamp} not found in index")
         crypto_data_matrix = self.dataframe_cache_np[timestamp_idx]
         all_entries = crypto_data_matrix.tolist()
-        for crypto in self.crypto_models:
-            all_entries.extend(prediction_data[crypto.symbol])
+        
+        all_entries.extend(prediction_data[self.crypto.symbol])
         return all_entries
 
     def get_reward(self, action: Actions) -> float:
