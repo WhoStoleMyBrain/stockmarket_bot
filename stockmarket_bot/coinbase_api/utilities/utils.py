@@ -1,3 +1,4 @@
+import time
 import requests
 from django.http import JsonResponse
 
@@ -66,36 +67,18 @@ def cb_fetch_product_candles(product_id, start, end, granularity):
     """
     try:
         data = cb_auth.restClientInstance.get_candles(product_id=product_id, start=start, end=end, granularity=granularity)
-        if 'errors' in data:
+        # print(f"received data from backend. {data.to_dict()}")
+        if 'errors' in data.to_dict().keys():
             # print(data['errors'])  # Logging the error for debugging purposes
             return JsonResponse({'errors': data['errors']}, status=data.get('status', 500))
         # If you reach here, it means the request was successful
-        return JsonResponse(data)
+        return JsonResponse(data.to_dict())
     
     except Exception as e:
         # This will handle any other unforeseen exceptions
         return JsonResponse({'errors': str(e)}, status=500)
 
-def initialize_default_cryptos(initial_volume=1000, database=Database.DEFAULT.value):
-    all_accounts = Account.objects.using(database).all()
-    all_accounts.delete()
-    cryptos = crypto_models
-    uuid='00000000-0000-0000-0000-000000000000'
-    usdc = Account(
-        name='USDC Wallet',
-        uuid=uuid,
-        currency='USDC',
-        value=initial_volume,
-    )
-    usdc.save(using=database)
-    for crypto in cryptos:
-        crypto_account = Account(
-            name=f'{crypto.symbol} Wallet',
-            uuid=uuid,
-            currency=crypto.symbol,
-            value=0,
-        )
-        crypto_account.save(using=database)
+
 
 ########################   Here starts the historical db update   ######################
 
@@ -183,6 +166,7 @@ def cb_find_earliest_data(product_id='BTC-USDC'):
         try:
             data = cb_fetch_product_candles(product_id, start, end, granularity)
             tmp = json.loads(data.content)
+            print(f"{product_id}: {start} - {end} was loaded. ")
             # print(f'loaded data: {tmp}')
         except TypeError:
             print(f'cb_find_earliest_data: data could not be serialized to json. Data: {data}')
@@ -262,7 +246,9 @@ def fetch_fiveminute_data_for_crypto(crypto_model:AbstractOHLCV):
             break
         json_data = json.loads(data.content)
         store_data(crypto_model, json_data["candles"], 'historical')
-        start += timedelta(hours=300)  # Move start ahead by 300 hours
+        start += timedelta(minutes=300*5)  # Move start ahead by 300 hours
         print(f'finished with chunk {_+1} of {int(chunks)}')
+        time.sleep(0.1)
         
-    add_calculated_parameters(crypto_model, database=Database.HISTORICAL.value)
+    # add_calculated_parameters(crypto_model, database=Database.HISTORICAL.value)
+    

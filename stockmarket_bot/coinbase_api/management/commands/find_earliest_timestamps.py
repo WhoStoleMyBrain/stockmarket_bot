@@ -1,5 +1,6 @@
 # base_app/management/commands/setup_periodic_task.py
 from django.core.management.base import BaseCommand
+from coinbase_api.enums import Database
 from coinbase_api.utilities.utils import cb_find_earliest_data
 from coinbase_api.constants import crypto_models
 from datetime import datetime
@@ -16,7 +17,7 @@ class Command(BaseCommand):
         print('starting earliest timestamp')
         for model in crypto_models:
             try:
-                obj = CryptoMetadata.objects.using('historical').get(
+                obj = CryptoMetadata.objects.using(Database.HISTORICAL.value).get(
                     symbol=CryptoMetadata.symbol_to_storage(model.symbol),
                     )
                 print(f'already had earliest data: {model.symbol}: {obj.earliest_date}')
@@ -29,7 +30,7 @@ class Command(BaseCommand):
                 # Either create a new record or update the existing one
                 print(CryptoMetadata.symbol_to_storage(model.symbol))
                 try:
-                    obj = CryptoMetadata.objects.using('historical').get(
+                    obj = CryptoMetadata.objects.using(Database.HISTORICAL.value).get(
                         symbol=CryptoMetadata.symbol_to_storage(model.symbol),
                         # earliest_date = earliest_date
                         )
@@ -40,7 +41,7 @@ class Command(BaseCommand):
                         symbol=CryptoMetadata.symbol_to_storage(model.symbol),
                         earliest_date = earliest_date
                     )
-                obj.save(using='historical')
+                obj.save(using=Database.HISTORICAL.value)
                 print(f'Stored the following date for {CryptoMetadata.symbol_to_storage(model.symbol)}: {obj.earliest_date}')
 
         

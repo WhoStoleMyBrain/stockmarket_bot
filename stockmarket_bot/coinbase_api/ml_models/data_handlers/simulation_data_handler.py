@@ -35,11 +35,10 @@ class SimulationDataHandler:
         self.step_count = 0
         self.feature_indices = [i for i, feature in enumerate(['timestamp', 'close', 'volume', 'sma', 'ema', 'rsi', 'macd', 'bollinger_high', 'bollinger_low', 'vmap', 'percentage_returns', 'log_returns']) if feature in crypto_features]
         self.usdc_held = initial_volume  # Initialize USDC account in memory
-        self.minimum_number_of_cryptos = 100
-        self.maker_fee = 0.004  # 0.4%
-        self.taker_fee = 0.006  # 0.6%
+        self.minimum_number_of_cryptos = 35
+        self.maker_fee = 0.0025  # 0.25% based on Advanced 1, might drop
+        self.taker_fee = 0.004  # 0.4% based on Advanced 1, might drop
         self.initial_volume: float = initial_volume
-        self.database: Database = Database.SIMULATION.value
         self.crypto_models: List[AbstractOHLCV] = crypto_models
         self.symbols = [crypto.symbol for crypto in self.crypto_models]
         self.total_volume = initial_volume
@@ -196,6 +195,12 @@ class SimulationDataHandler:
     def map_sell_action(self, sell_action: float, action_factor: float) -> float:
         return (max(sell_action + action_factor - 0.1, action_factor - 1)) / (1 - action_factor)
 
+    def apply_slippage_to_value(self, value: float, percentage: float = 2.0) -> float:
+        return value * (1 + random.uniform(0, percentage) / 100.0)
+    
+    def apply_latency(self, percentage: float = 2.0) -> bool:
+        return random.randint(0, 100) < percentage
+
     def update_state(self, action) -> Tuple[npt.NDArray[np.float16], float, bool, Dict[Any, Any]]:
         self.costs_for_action = self.cost_for_action(action[1:])  # Exclude the first action for costs calculation
         
@@ -210,18 +215,22 @@ class SimulationDataHandler:
             total_buy_actions = sum([self.map_buy_action(buy_action, self.action_factor) for idx, buy_action in top_buy_indices])
             individual_liquidity = available_liquidity / total_buy_actions if total_buy_actions > 0 else 0
             for idx, buy_action in top_buy_indices:
+                if self.apply_latency():
+                    continue
                 crypto_model = self.crypto_models[idx]
                 buy_action_mapped = self.map_buy_action(buy_action, self.action_factor)
                 crypto_value = self.get_crypto_value_from_cache(crypto_model.symbol, self.timestamp)
-                buy_amount = individual_liquidity * buy_action_mapped if crypto_value else 0
+                buy_amount =  self.apply_slippage_to_value(individual_liquidity) * buy_action_mapped if crypto_value else 0
                 self.account_holdings[crypto_model.symbol] = max(self.account_holdings[crypto_model.symbol] + (buy_amount - self.costs_for_action[idx]) / crypto_value if crypto_value else self.account_holdings[crypto_model.symbol], 0)
                 self.usdc_held = max(self.usdc_held - buy_amount, 0)
         for idx, sell_action in sell_indices:
+            if self.apply_latency():
+                    continue
             crypto_model = self.crypto_models[idx]
             sell_action_mapped = self.map_sell_action(sell_action, self.action_factor)
             crypto_value = self.get_crypto_value_from_cache(crypto_model.symbol, self.timestamp)
             sell_amount = abs(self.account_holdings[crypto_model.symbol] * sell_action_mapped) if crypto_value else 0
-            self.usdc_held = max(self.usdc_held + sell_amount * crypto_value - self.costs_for_action[idx] if crypto_value else self.usdc_held, 0)
+            self.usdc_held = max(self.usdc_held + self.apply_slippage_to_value(sell_amount) * crypto_value - self.costs_for_action[idx] if crypto_value else self.usdc_held, 0)
             self.account_holdings[crypto_model.symbol] = max(self.account_holdings[crypto_model.symbol] - sell_amount, 0)
         self.timestamp += timedelta(hours=1)
         self.state = self.get_current_state()
@@ -260,10 +269,9 @@ class SimulationDataHandler:
         self.step_count = 0
         self.action_factor = 0.2
         self.initial_timestamp = None
-        self.maker_fee = 0.004  # 0.4%
-        self.taker_fee = 0.006  # 0.6%
+        self.maker_fee = 0.0025  # 0.25% based on Advanced 1, might drop
+        self.taker_fee = 0.004  # 0.4% based on Advanced 1, might drop
         self.initial_volume = self.initial_volume
-        self.database = Database.SIMULATION.value
         self.crypto_models: List[AbstractOHLCV] = crypto_models
         self.total_volume = self.initial_volume
         self.account_holdings = {crypto.symbol: 0 for crypto in self.crypto_models}
@@ -330,7 +338,7 @@ class SimulationDataHandler:
             )
         )
 
-        fee_rates = np.where(buy_actions, self.maker_fee, np.where(sell_actions, self.taker_fee, 0))
+        fee_rates = np.where(buy_actions, self.taker_fee, np.where(sell_actions, self.taker_fee, 0))
         transaction_costs = transaction_volumes * fee_rates * self.transaction_cost_factor
         return transaction_costs.tolist()
 

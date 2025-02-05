@@ -41,7 +41,6 @@ class AbstractOHLCV(models.Model):
     close_higher_shifted_1h = models.BooleanField(null=True)
     close_higher_shifted_24h = models.BooleanField(null=True)
     close_higher_shifted_168h = models.BooleanField(null=True)
-
     # timestamp, open, high, low, 
 
     
@@ -260,7 +259,7 @@ class CryptoMetadata(models.Model):
         return self.symbol
 
     @staticmethod
-    def symbol_to_storage(symbol):
+    def symbol_to_storage(symbol) -> str:
         return f'{symbol}-USDC'
     
     @staticmethod
