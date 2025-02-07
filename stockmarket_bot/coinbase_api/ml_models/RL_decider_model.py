@@ -23,12 +23,11 @@ class CustomEnv(gym.Env):
         self.crypto_models = crypto_models
         self.data_handler = data_handler
         self.transaction_cost_factor = transaction_cost_factor
-        N = 1 + 1 #! Hard-coded USDC holding action in first place
-        # N = len(self.crypto_models) + 1 #! Hard-coded USDC holding action in first place
+        N = 1 #! Currently set to handle one crypto currency at a time
         self.action_space = spaces.Box(low=-1, high=1, shape=(N,), dtype=np.float32)  # where N is the number of cryptocurrencies
         # M = len(self.get_crypto_features()) + len(self.get_crypto_predicted_features()) + len(self.get_extra_features())
         M = len(self.get_crypto_features()) + len(self.get_crypto_predicted_features())
-        shape_value = M * (N - 1) + 3  # +1 each because of total volume held and USDC value held and volume of the currency held, N - 1 because hard coded USDC Holding action is not part of the input
+        shape_value = M * N + 3  # +1 each because of total volume held and USDC value held and volume of the currency held
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(shape_value,), dtype=np.float64)
 
     def set_currency(self, new_currency: AbstractOHLCV):
