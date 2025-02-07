@@ -44,6 +44,9 @@ class AbstractDataHandler:
 
     def reset_state(self) -> npt.NDArray[np.float16]:
         raise NotImplementedError
+    
+    def set_currency(self, new_currency: AbstractOHLCV) -> None:
+        raise NotImplementedError
 
     def get_reward_ratios_for_current_timestep(self) -> Dict[str, float]:
         ratios = {}

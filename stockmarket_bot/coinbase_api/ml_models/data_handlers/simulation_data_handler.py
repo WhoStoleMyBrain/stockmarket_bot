@@ -13,7 +13,7 @@ import logging
 class SimulationDataHandler:
     def __init__(self, crypto: AbstractOHLCV, initial_volume=1000, total_steps=1024, transaction_cost_factor=1.0, reward_function_index=0, noise_level=0.01) -> None:
         logging.basicConfig(
-            filename='simulation.log',
+            filename='/logs/sim_logs/simulation.log',
             level=logging.INFO,
             format='%(asctime)s %(levelname)s:%(message)s'
         )
@@ -49,7 +49,7 @@ class SimulationDataHandler:
         self.initial_timestamp = self.get_starting_timestamp()
         self.timestamp = self.initial_timestamp
         self.dataframe_cache = self.fetch_all_historical_data()
-        self.prediction_cache = self.fetch_all_prediction_data()
+        # self.prediction_cache = self.fetch_all_prediction_data()
         self.state = self.get_current_state()
         self.past_volumes = []
         self.short_term_reward_window = 10
@@ -148,17 +148,15 @@ class SimulationDataHandler:
         return crypto_info.earliest_date
 
     def get_maximum_timestamp(self) -> datetime:
-        timestamp = None
+        timestamp: datetime = None
         try:
             val = self.crypto.objects.using(Database.HISTORICAL.value).values_list("timestamp").order_by("-timestamp").first()
-            timestamp = val if val is not None else (datetime(year=2025, month=1, day=9),)
+            timestamp = val[0] if val is not None else datetime(year=2025, month=1, day=9)
         except self.crypto.DoesNotExist:
             print(f'did not exist: {self.crypto.symbol}')
-            timestamp = self.crypto.default_entry(timestamp=datetime(year=2024, month=6, day=20))
-        except AttributeError:
-            print(f'attribute error: {self.crypto.symbol}')
-            timestamp = self.crypto.default_entry(timestamp=datetime(year=2024, month=6, day=20))
-        return timestamp.timestamp
+        except AttributeError as e:
+            print(f'attribute error: {self.crypto.symbol}: {e}')
+        return timestamp if timestamp is not None else datetime(year=2025, month=1, day=9)
 
     def get_starting_timestamp(self) -> datetime:
         if self.initial_timestamp is None:
@@ -188,10 +186,24 @@ class SimulationDataHandler:
         return (max(sell_action + action_factor - 0.1, action_factor - 1)) / (1 - action_factor)
 
     def apply_slippage_to_value(self, value: float, percentage: float = 2.0) -> float:
-        return value * (1 + random.uniform(0, percentage) / 100.0)
+        rand_factor = (1 + (random.uniform(0, percentage) / 100.0))
+        # print(f"random factor: {rand_factor}")
+        return value * rand_factor
     
     def apply_latency(self, percentage: float = 2.0) -> bool:
-        return random.randint(0, 100) < percentage
+        return random.uniform(0, 100) < percentage
+    
+    def set_currency(self, new_currency: AbstractOHLCV):
+        print(f"setting crypto from {self.crypto.symbol} to {new_currency.symbol}")
+        self.crypto = new_currency
+        self.account_holdings = {self.crypto.symbol: 0.0}
+        self.earliest_timestamp = self.get_earliest_timestamp()
+        self.maximum_timestamp = self.get_maximum_timestamp()
+        self.initial_timestamp = self.get_starting_timestamp()
+        self.timestamp = self.initial_timestamp
+        self.dataframe_cache = self.fetch_all_historical_data()
+        # self.prediction_cache = self.fetch_all_prediction_data()
+        self.state = self.get_current_state()
 
     def update_state(self, action) -> Tuple[npt.NDArray[np.float16], float, bool, Dict[Any, Any]]:
         self.costs_for_action = self.cost_for_action(action[1:])  # Exclude the first action for costs calculation. first action is usdc hold action
@@ -200,23 +212,30 @@ class SimulationDataHandler:
         hold_usdc = action[0] < 0  # First action is for holding USDC
         self.holding_actions.append(hold_usdc)
         available_liquidity = self.usdc_held - sum(self.costs_for_action)
-        if not hold_usdc and is_buy_action and not self.apply_latency():
+        # print(f"action: {action}; is buy action: {is_buy_action}; is sell action: {is_sell_action}; hold_usdc: {hold_usdc}. usdc_held: {self.usdc_held}. available liquidity: {available_liquidity}")
+        # if True:
+        if (not hold_usdc) and is_buy_action and (not self.apply_latency()):
+                # action[1] = 0.75
                 buy_action = self.map_buy_action(action[1], self.action_factor)
                 buy_action_mapped = self.map_buy_action(buy_action, self.action_factor)
                 crypto_value = self.get_crypto_value_from_cache(self.crypto.symbol, self.timestamp)
-                buy_amount =  self.apply_slippage_to_value(available_liquidity) * buy_action_mapped if crypto_value else 0
+                buy_amount = self.apply_slippage_to_value(available_liquidity, -2) * buy_action_mapped if crypto_value else 0
                 self.account_holdings[self.crypto.symbol] = max(self.account_holdings[self.crypto.symbol] + (buy_amount - self.costs_for_action[0]) / crypto_value if crypto_value else self.account_holdings[self.crypto.symbol], 0)
                 self.usdc_held = max(self.usdc_held - buy_amount, 0)
+                # print(f"crypto value: {crypto_value}; buy_action_mapped: {buy_action_mapped}; buy_amount: {buy_amount}")
         
+        # if False:
         if is_sell_action and not self.apply_latency():
             sell_action = self.map_sell_action(action[1], self.action_factor)
             sell_action_mapped = self.map_sell_action(sell_action, self.action_factor)
             crypto_value = self.get_crypto_value_from_cache(self.crypto.symbol, self.timestamp)
             sell_amount = abs(self.account_holdings[self.crypto.symbol] * sell_action_mapped) if crypto_value else 0
-            self.usdc_held = max(self.usdc_held + self.apply_slippage_to_value(sell_amount) * crypto_value - self.costs_for_action[0] if crypto_value else self.usdc_held, 0)
+            self.usdc_held = max(self.usdc_held + self.apply_slippage_to_value(sell_amount, -2) * crypto_value - self.costs_for_action[0] if crypto_value else self.usdc_held, 0)
             self.account_holdings[self.crypto.symbol] = max(self.account_holdings[self.crypto.symbol] - sell_amount, 0)
+            # print(f"crypto value: {crypto_value}; sell_action_mapped: {sell_action_mapped}; sell_amount: {sell_amount}")
         self.timestamp += timedelta(minutes=5)
         self.state = self.get_current_state()
+        # print(f"new state: {self.state}")
         self.past_volumes.append(self.total_volume)
         if len(self.past_volumes) > self.short_term_reward_window:
             self.past_volumes.pop(0)
@@ -240,6 +259,9 @@ class SimulationDataHandler:
         self.logger.info(f"Step number: {self.step_count}")
         self.logger.info(f"USDC held before reset: {self.usdc_held}")
         self.logger.info(f"Crypto values before reset: {self.account_holdings}")
+        self.logger.info(f"Total Volume: {self.total_volume}")
+        if sum(self.holding_actions) != 0 and len(self.holding_actions) > 0:
+            self.logger.info(f"Resetting training with: {self.total_volume:.2f}$. Holding actions: {sum(self.holding_actions)} / {len(self.holding_actions)}")
         self.step_count = 0
         self.action_factor = 0.2
         self.initial_timestamp = None
@@ -258,7 +280,7 @@ class SimulationDataHandler:
             self.initial_timestamp = self.get_starting_timestamp()
             self.timestamp = self.initial_timestamp
             self.dataframe_cache = self.fetch_all_historical_data()
-            self.prediction_cache = self.fetch_all_prediction_data()
+            # self.prediction_cache = self.fetch_all_prediction_data()
             self.prepare_simulation_database()
         else:
             if (self._initialized):
@@ -271,9 +293,9 @@ class SimulationDataHandler:
                 self.initial_timestamp = self.get_starting_timestamp()
                 self.timestamp = self.initial_timestamp
                 self.dataframe_cache = self.fetch_all_historical_data()
-                self.prediction_cache = self.fetch_all_prediction_data()
+                # self.prediction_cache = self.fetch_all_prediction_data()
                 self.prepare_simulation_database()
-                
+        
         self.initial_state = self.get_current_state()
         return self.initial_state
     
@@ -313,11 +335,11 @@ class SimulationDataHandler:
         transaction_costs = transaction_volumes * fee_rates * self.transaction_cost_factor
         return transaction_costs.tolist()
 
-    def get_new_prediction_data(self, timestamp: datetime) -> Dict[str, List[float]]:
-        all_entries = {
-            self.crypto.symbol: self.prediction_cache[self.crypto.symbol].get(timestamp, [0.0] * 6)
-        }
-        return all_entries
+    # def get_new_prediction_data(self, timestamp: datetime) -> Dict[str, List[float]]:
+    #     all_entries = {
+    #         self.crypto.symbol: self.prediction_cache[self.crypto.symbol].get(timestamp, [0.0] * 6)
+    #     }
+    #     return all_entries
 
     def prepare_simulation_database(self) -> None:
         print(f'Preparing simulation.')
@@ -330,14 +352,14 @@ class SimulationDataHandler:
         return self.timestamp_to_index.get(timestamp, -1)
         
     def get_new_crypto_data(self) -> List[float]:
-        prediction_data = self.get_new_prediction_data(self.timestamp)
+        # prediction_data = self.get_new_prediction_data(self.timestamp)
         timestamp_idx = self.get_timestamp_index(self.timestamp)
         if timestamp_idx == -1:
             raise ValueError(f"Timestamp {self.timestamp} not found in index")
         crypto_data_matrix = self.dataframe_cache_np[timestamp_idx]
         all_entries = crypto_data_matrix.tolist()
         
-        all_entries.extend(prediction_data[self.crypto.symbol])
+        # all_entries.extend(prediction_data[self.crypto.symbol])
         return all_entries
 
     def get_reward(self, action: Actions) -> float:

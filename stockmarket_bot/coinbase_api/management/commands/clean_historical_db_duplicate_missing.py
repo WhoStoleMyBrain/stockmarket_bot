@@ -6,6 +6,7 @@ from coinbase_api.constants import crypto_models
 from coinbase_api.enums import Database
 from datetime import datetime, timedelta
 
+from coinbase_api.models.generated_models import *
 from coinbase_api.models.models import AbstractOHLCV
 
 class Command(BaseCommand):
@@ -35,7 +36,8 @@ class Command(BaseCommand):
         self.logger.addHandler(console_handler)
 
     def handle(self, *args, **kwargs):
-        for crypto_model in crypto_models:
+        main_crypto_models:list[AbstractOHLCV] = [BTC, ETH]
+        for crypto_model in main_crypto_models:
             message = f"Processing {crypto_model.symbol}"
             self.logger.info(message)
             
@@ -69,9 +71,9 @@ class Command(BaseCommand):
 
         previous_record = None
         for record in all_records:
-            if previous_record and (record.timestamp - previous_record.timestamp) > timedelta(hours=1):
+            if previous_record and (record.timestamp - previous_record.timestamp) > timedelta(minutes=5):
                 # Fill missing timestamps
-                missing_timestamp = previous_record.timestamp + timedelta(hours=1)
+                missing_timestamp = previous_record.timestamp + timedelta(minutes=5)
                 while missing_timestamp < record.timestamp:
                     # Duplicate the previous record with the missing timestamp
                     crypto_model.objects.using(Database.HISTORICAL.value).create(
@@ -93,7 +95,7 @@ class Command(BaseCommand):
                     )
                     message = f"Filled missing data for {crypto_model.symbol} at {missing_timestamp}"
                     self.logger.info(message)
-                    missing_timestamp += timedelta(hours=1)
+                    missing_timestamp += timedelta(minutes=5)
 
             previous_record = record
 

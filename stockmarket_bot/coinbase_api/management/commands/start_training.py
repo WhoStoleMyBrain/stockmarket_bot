@@ -9,7 +9,7 @@ import shutil
 from coinbase_api.ml_models.custom_policy import CustomPolicy
 from coinbase_api.ml_models.data_handlers.simulation_data_handler import SimulationDataHandler
 from coinbase_api.ml_models.rl_model_logging_callback import RLModelLoggingCallback
-from coinbase_api.models.generated_models import BTC
+from coinbase_api.models.generated_models import BTC, ETH
 
 CONFIG_FILE_PATH = 'coinbase_api/ml_models/training_configs/training_config_1.json'
 ACTIVE_TRAININGS_PATH = 'coinbase_api/ml_models/active_trainings'
@@ -142,10 +142,12 @@ class Command(BaseCommand):
                     if os.path.exists(model_path):
                         print('Loaded model!')
                         env = CustomEnv(data_handler=SimulationDataHandler(BTC ,total_steps=interval, transaction_cost_factor=interval_transaction_costs))
+                        self.env = env
                         self.model = PPO.load(model_path, env=env)
                         self.model.tensorboard_log = log_dir
                     else:
                         env = CustomEnv(data_handler=SimulationDataHandler(BTC, total_steps=interval, transaction_cost_factor=interval_transaction_costs))
+                        self.env = env
                         self.model = PPO(
                             CustomPolicy,
                             policy_kwargs={"net_arch": net_arch},
@@ -162,7 +164,8 @@ class Command(BaseCommand):
                     self.model.n_steps = interval
                     self.model._setup_model()
                 else:
-                    env = CustomEnv(data_handler=SimulationDataHandler(total_steps=interval, transaction_cost_factor=interval_transaction_costs))
+                    env = CustomEnv(data_handler=SimulationDataHandler(BTC, total_steps=interval, transaction_cost_factor=interval_transaction_costs))
+                    self.env = env
                     self.model.set_env(env)
                     self.model.learning_rate = lr_schedule
                     self.model.clip_range = get_clip_range(clip_range)
@@ -172,6 +175,10 @@ class Command(BaseCommand):
                     self.model._setup_model()
 
                 try:
+                    # env = CustomEnv(data_handler=SimulationDataHandler(ETH, total_steps=interval, transaction_cost_factor=interval_transaction_costs))
+                    self.env.set_currency(ETH)
+                    # self.env.reset()
+                    self.model.set_env(self.env)
                     self.model.learn(
                         total_timesteps=interval,
                         progress_bar=True,

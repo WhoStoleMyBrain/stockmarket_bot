@@ -5,6 +5,8 @@ from gymnasium import spaces
 from coinbase_api.ml_models.data_handlers.abstract_data_handler import AbstractDataHandler
 import numpy as np
 import numpy.typing as npt
+
+from coinbase_api.models.models import AbstractOHLCV
 from ..constants import crypto_models, crypto_features, crypto_predicted_features, crypto_extra_features
 
 # Configure logging
@@ -24,9 +26,13 @@ class CustomEnv(gym.Env):
         N = 1 + 1 #! Hard-coded USDC holding action in first place
         # N = len(self.crypto_models) + 1 #! Hard-coded USDC holding action in first place
         self.action_space = spaces.Box(low=-1, high=1, shape=(N,), dtype=np.float32)  # where N is the number of cryptocurrencies
-        M = len(self.get_crypto_features()) + len(self.get_crypto_predicted_features()) + len(self.get_extra_features())
-        shape_value = M * (N - 1) + 2  # +1 because of total volume held and USDC value held, N - 1 because hard coded USDC Holding action is not part of the input
+        # M = len(self.get_crypto_features()) + len(self.get_crypto_predicted_features()) + len(self.get_extra_features())
+        M = len(self.get_crypto_features()) + len(self.get_crypto_predicted_features())
+        shape_value = M * (N - 1) + 3  # +1 each because of total volume held and USDC value held and volume of the currency held, N - 1 because hard coded USDC Holding action is not part of the input
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(shape_value,), dtype=np.float64)
+
+    def set_currency(self, new_currency: AbstractOHLCV):
+        self.data_handler.set_currency(new_currency)
 
     def step(self, action) -> Tuple[npt.NDArray[np.float16], float, bool, Dict[Any, Any]]:
         next_state, cost_for_action, terminated, info = self.data_handler.update_state(action)
