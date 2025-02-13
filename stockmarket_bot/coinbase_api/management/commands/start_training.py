@@ -160,12 +160,12 @@ class Command(BaseCommand):
                 if self.model is None or self.model.n_steps != interval:
                     if os.path.exists(model_path):
                         print('Loaded model!')
-                        env = CustomEnv(data_handler=SimulationDataHandler(BTC ,total_steps=interval, *items_for_datahandler))
+                        env = CustomEnv(data_handler=SimulationDataHandler(BTC ,total_steps=interval, **items_for_datahandler))
                         self.env = env
                         self.model = PPO.load(model_path, env=env)
                         self.model.tensorboard_log = log_dir
                     else:
-                        env = CustomEnv(data_handler=SimulationDataHandler(BTC, total_steps=interval, *items_for_datahandler))
+                        env = CustomEnv(data_handler=SimulationDataHandler(BTC, total_steps=interval, **items_for_datahandler))
                         self.env = env
                         self.model = PPO(
                             CustomPolicy,
@@ -183,7 +183,7 @@ class Command(BaseCommand):
                     self.model.n_steps = interval
                     self.model._setup_model()
                 else:
-                    env = CustomEnv(data_handler=SimulationDataHandler(BTC, total_steps=interval, *items_for_datahandler))
+                    env = CustomEnv(data_handler=SimulationDataHandler(BTC, total_steps=interval, **items_for_datahandler))
                     self.env = env
                     self.model.set_env(env)
                     self.model.learning_rate = lr_schedule
