@@ -36,8 +36,8 @@ class Command(BaseCommand):
         self.logger.addHandler(console_handler)
 
     def handle(self, *args, **kwargs):
-        main_crypto_models:list[AbstractOHLCV] = [BTC, ETH]
-        for crypto_model in main_crypto_models:
+        
+        for crypto_model in crypto_models:
             message = f"Processing {crypto_model.symbol}"
             self.logger.info(message)
             

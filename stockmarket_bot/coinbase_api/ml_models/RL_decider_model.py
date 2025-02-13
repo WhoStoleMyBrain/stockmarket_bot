@@ -20,13 +20,13 @@ logging.basicConfig(
 class CustomEnv(gym.Env):
     def __init__(self, data_handler: AbstractDataHandler, transaction_cost_factor=1.0) -> None:
         super(CustomEnv, self).__init__()
-        self.crypto_models = crypto_models
         self.data_handler = data_handler
         self.transaction_cost_factor = transaction_cost_factor
         N = 1 #! Currently set to handle one crypto currency at a time
-        self.action_space = spaces.Box(low=-1, high=1, shape=(N,), dtype=np.float32)  # where N is the number of cryptocurrencies
+        self.action_space = spaces.Box(low=0, high=1, shape=(N,), dtype=np.float32)  # where N is the number of cryptocurrencies
         # M = len(self.get_crypto_features()) + len(self.get_crypto_predicted_features()) + len(self.get_extra_features())
         M = len(self.get_crypto_features()) + len(self.get_crypto_predicted_features())
+        # num_features = len(data_handler.dataframe_cache_np[0])
         shape_value = M * N + 3  # +1 each because of total volume held and USDC value held and volume of the currency held
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(shape_value,), dtype=np.float64)
 
@@ -34,7 +34,7 @@ class CustomEnv(gym.Env):
         self.data_handler.set_currency(new_currency)
 
     def step(self, action) -> Tuple[npt.NDArray[np.float16], float, bool, Dict[Any, Any]]:
-        next_state, cost_for_action, terminated, info = self.data_handler.update_state(action)
+        next_state, cost_for_action, done, info = self.data_handler.update_state(action)
         self.state = next_state
         self.cost_for_action = cost_for_action
         total_volume = next_state[0]
@@ -43,8 +43,8 @@ class CustomEnv(gym.Env):
         truncated = False
 
         if total_volume < self.data_handler.initial_volume / 10:
-            terminated = True
-            logging.debug(f'Terminated: {terminated}')
+            done = True
+            logging.debug(f'Done: {done}')
             logging.debug(f'Total time steps: {self.data_handler.total_steps}')
             logging.debug(f'Initial timestamp: {self.data_handler.initial_timestamp}')
             logging.debug(f'Current timestamp: {self.data_handler.timestamp}')
@@ -57,7 +57,7 @@ class CustomEnv(gym.Env):
             logging.debug(f'Total volume: {total_volume}')
             logging.debug(f'Cost for action: {cost_for_action}')
         
-        return next_state, reward_q, terminated, truncated, info
+        return next_state, reward_q, done, truncated, info
 
     def reset(self, seed=None, options=None) -> Tuple[npt.NDArray[np.float16], Dict[Any, Any]]:
         initial_state = self.data_handler.reset_state()

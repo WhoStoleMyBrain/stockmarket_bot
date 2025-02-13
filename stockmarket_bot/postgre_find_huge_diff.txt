@@ -1,0 +1,13 @@
+WITH cte AS (
+  SELECT 
+    *,
+    LAG("close") OVER (ORDER BY timestamp ASC) AS prev_close
+  FROM public.coinbase_api_btc
+  WHERE timestamp < '2019-07-01 06:00:00' 
+    AND timestamp > '2019-05-23 06:00:00'
+)
+SELECT *
+FROM cte
+WHERE prev_close IS NOT NULL
+  AND ABS("close" - prev_close) / prev_close > 0.05
+ORDER BY timestamp ASC;

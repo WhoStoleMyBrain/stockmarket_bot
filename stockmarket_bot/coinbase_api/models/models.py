@@ -71,9 +71,9 @@ class AbstractOHLCV(models.Model):
             self.bollinger_low is None or
             self.percentage_returns is None or
             self.log_returns is None or
-            self.close_higher_shifted_1h is None or
-            self.close_higher_shifted_24h is None or
-            self.close_higher_shifted_168h is None or
+            # self.close_higher_shifted_1h is None or
+            # self.close_higher_shifted_24h is None or
+            # self.close_higher_shifted_168h is None or
             self.open == 0.0 or
             self.high == 0.0 or
             self.low == 0.0 or
@@ -207,8 +207,7 @@ class AbstractOHLCV(models.Model):
         self.close_higher_shifted_24h = 0.0 if (self.close_higher_shifted_24h == None or self.close_higher_shifted_24h == 0.0) else self.close_higher_shifted_24h
         self.close_higher_shifted_168h = 0.0 if (self.close_higher_shifted_168h == None or self.close_higher_shifted_168h == 0.0) else self.close_higher_shifted_168h
         return self
-        
-
+    
 class Bitcoin(AbstractOHLCV):
     symbol = "BTC"
     def __str__(self) -> str:
@@ -265,3 +264,18 @@ class CryptoMetadata(models.Model):
     @staticmethod
     def stored_symbol_to_model(model_entry):
         return model_entry.symbol.split('-')[0]
+    
+#! non-django model used for bracket selling
+class BracketSellItem:
+    def __init__(self, cryptoToSell: AbstractOHLCV, cryptoAmount: float ,cryptoValue: float, bracketUp = 1.03, bracketDown = 0.99):
+        self.cryptoToSell = cryptoToSell
+        self.cryptoAmount = cryptoAmount
+        self.cryptoValue = cryptoValue
+        self.bracketUp = bracketUp
+        self.bracketDown = bracketDown
+        
+    def sellItem(self, currentValue: float) -> bool:
+        ratio = currentValue / self.cryptoValue
+        return ratio > self.bracketUp or ratio < self.bracketDown
+    
+    

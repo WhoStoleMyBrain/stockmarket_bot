@@ -9,7 +9,8 @@ import shutil
 from coinbase_api.ml_models.custom_policy import CustomPolicy
 from coinbase_api.ml_models.data_handlers.simulation_data_handler import SimulationDataHandler
 from coinbase_api.ml_models.rl_model_logging_callback import RLModelLoggingCallback
-from coinbase_api.models.generated_models import BTC, ETH
+from coinbase_api.models.generated_models import *
+from coinbase_api.constants import crypto_models
 
 CONFIG_FILE_PATH = 'coinbase_api/ml_models/training_configs/training_config_1.json'
 ACTIVE_TRAININGS_PATH = 'coinbase_api/ml_models/active_trainings'
@@ -175,18 +176,18 @@ class Command(BaseCommand):
                     self.model._setup_model()
 
                 try:
-                    # env = CustomEnv(data_handler=SimulationDataHandler(ETH, total_steps=interval, transaction_cost_factor=interval_transaction_costs))
-                    self.env.set_currency(ETH)
-                    # self.env.reset()
-                    self.model.set_env(self.env)
-                    self.model.learn(
-                        total_timesteps=interval,
-                        progress_bar=True,
-                        reset_num_timesteps=False,
-                        tb_log_name=f"ModelV2_{interval}_{interval_transaction_costs}",
-                        log_interval=1,
-                        callback=[RLModelLoggingCallback(), checkpoint_callback]
-                    )
+                    for crypto_model in crypto_models:
+                        self.env.set_currency(crypto_model)
+                        self.model.set_env(self.env)
+                        self.model.learn(
+                            total_timesteps=interval,
+                            progress_bar=True,
+                            reset_num_timesteps=False,
+                            tb_log_name=f"ModelV2_{interval}_{interval_transaction_costs}",
+                            log_interval=1,
+                            callback=[checkpoint_callback]
+                            # callback=[RLModelLoggingCallback(), checkpoint_callback]
+                        )
                     self.model.save(model_path)
                     phase_timesteps -= interval
                     phase['phase_timesteps'] = phase_timesteps

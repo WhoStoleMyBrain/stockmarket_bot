@@ -1,21 +1,21 @@
 services:
-  web:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    command: python manage.py runserver 0.0.0.0:8000
-    # command: bash -c "pip install debugpy -t /tmp && python manage.py migrate && python /tmp/debugpy --wait-for-client --listen 0.0.0.0:5678 manage.py runserver 0.0.0.0:8000"
-    volumes:
-      - .:/app
-      - tensorboard_logs:/logs  # Mount the shared volume
-    ports:
-      - "8000:8000"
-      - "5678:5678"
-    container_name: web
-    depends_on:
-      # - redis
-      - db
-      - historical_db
+  # web:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   command: python manage.py runserver 0.0.0.0:8000
+  #   # command: bash -c "pip install debugpy -t /tmp && python manage.py migrate && python /tmp/debugpy --wait-for-client --listen 0.0.0.0:5678 manage.py runserver 0.0.0.0:8000"
+  #   volumes:
+  #     - .:/app
+  #     - tensorboard_logs:/logs  # Mount the shared volume
+  #   ports:
+  #     - "8000:8000"
+  #     - "5678:5678"
+  #   container_name: web
+  #   depends_on:
+  #     # - redis
+  #     - db
+  #     - historical_db
   # redis:
   #   image: redis
   #   ports:

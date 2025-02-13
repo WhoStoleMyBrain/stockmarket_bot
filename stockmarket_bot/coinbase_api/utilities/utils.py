@@ -3,10 +3,9 @@ import requests
 from django.http import JsonResponse
 
 from coinbase_api.enums import Database
-from ..views.views import cb_auth, cb_list_accounts
-from ..models.models import AbstractOHLCV, Account, Bitcoin, CryptoMetadata, Ethereum, Polkadot
+from ..views.views import cb_auth
+from ..models.models import AbstractOHLCV, Bitcoin, CryptoMetadata, Ethereum, Polkadot
 import json
-from ..constants import crypto_models
 
 from datetime import datetime, timedelta, timezone
 from ..enums import Granularities
@@ -237,7 +236,7 @@ def fetch_fiveminute_data_for_crypto(crypto_model:AbstractOHLCV):
     for _ in range(int(chunks)):
         # Fetch hourly data
         print(f'starting with chunk {_+1} of {int(chunks)}')
-        tmp_end = start + timedelta(minutes=300*5)
+        tmp_end = start + timedelta(minutes=299*5) #! -1 to not fetch duplicate data at the ends! reduces overhead in trying to fix this
         print(f'requesting data for {start.year}.{"0" if start.month < 10 else ""}{start.month}.{"0" if start.day < 10 else ""}{start.day}-{"0" if start.hour < 10 else ""}{start.hour}:00-{tmp_end.year}.{"0" if tmp_end.month < 10 else ""}{tmp_end.month}.{"0" if tmp_end.day < 10 else ""}{tmp_end.day}-{"0" if tmp_end.hour < 10 else ""}{tmp_end.hour}:00')
         data = cb_fetch_product_candles(f'{crypto_model.symbol}-USDC', int(datetime.timestamp(start)), int(datetime.timestamp(tmp_end)), Granularities.FIVE_MINUTE.value)
         if 'errors' in json.loads(data.content):

@@ -44,3 +44,6 @@ class Actions(Enum):
     SELL = 0
     HOLD = 1
     BUY = 2
+    
+class ExportFolder(Enum):
+    EXPORT_FOLDER = "crypto_data_export"

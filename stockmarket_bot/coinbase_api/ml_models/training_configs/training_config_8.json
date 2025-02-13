@@ -12,7 +12,7 @@
             "batch_size": 64,
             "n_epochs": 6,
             "reward_function_index": 0,
-            "noise_level": 0.01
+            "noise_level": 0.00
         },
         {
             "percentage": 1,
@@ -25,7 +25,7 @@
             "batch_size": 64,
             "n_epochs": 12,
             "reward_function_index": 3,
-            "noise_level": 0.01
+            "noise_level": 0.00
         },
         {
             "percentage": 20,
@@ -38,7 +38,7 @@
             "batch_size": 64,
             "n_epochs": 6,
             "reward_function_index": 0,
-            "noise_level": 0.01
+            "noise_level": 0.00
         },
         {
             "percentage": 1,
@@ -51,7 +51,7 @@
             "batch_size": 64,
             "n_epochs": 12,
             "reward_function_index": 3,
-            "noise_level": 0.01
+            "noise_level": 0.00
         },
         {
             "percentage": 15,
@@ -64,7 +64,7 @@
             "batch_size": 64,
             "n_epochs": 5,
             "reward_function_index": 1,
-            "noise_level": 0.01
+            "noise_level": 0.00
         },
         {
             "percentage": 1,
@@ -78,7 +78,7 @@
             "n_epochs": 12,
             "phase_timesteps": 30000,
             "reward_function_index": 3,
-            "noise_level": 0.01
+            "noise_level": 0.00
         },
         {
             "percentage": 15,
@@ -91,7 +91,7 @@
             "batch_size": 64,
             "n_epochs": 5,
             "reward_function_index": 1,
-            "noise_level": 0.01
+            "noise_level": 0.00
         },
         {
             "percentage": 1,
@@ -104,7 +104,7 @@
             "batch_size": 64,
             "n_epochs": 12,
             "reward_function_index": 3,
-            "noise_level": 0.01
+            "noise_level": 0.00
         },
         {
             "percentage": 15,
@@ -117,7 +117,7 @@
             "batch_size": 64,
             "n_epochs": 4,
             "reward_function_index": 2,
-            "noise_level": 0.01
+            "noise_level": 0.00
         },
         {
             "percentage": 1,
@@ -130,7 +130,7 @@
             "batch_size": 64,
             "n_epochs": 12,
             "reward_function_index": 3,
-            "noise_level": 0.01
+            "noise_level": 0.00
         }
     ],
     "policy_parameters": {

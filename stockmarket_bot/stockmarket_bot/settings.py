@@ -86,7 +86,8 @@ DATABASES = {
         'NAME': 'mydatabase',
         'USER': 'myuser',
         'PASSWORD': 'mypassword',
-        'HOST': 'db',  # Use the service name from docker-compose.yml
+        'HOST': 'localhost',  # Use the service name from docker-compose.yml
+        # 'HOST': 'db',  # Use the service name from docker-compose.yml
         'PORT': '5432',
     },
     Database.SIMULATION.value: {
@@ -94,7 +95,8 @@ DATABASES = {
         'NAME': 'simulation',
         'USER': 'myuser',
         'PASSWORD': 'mypassword',
-        'HOST': 'db',  # Use the service name from docker-compose.yml
+        'HOST': 'localhost',  # Use the service name from docker-compose.yml
+        # 'HOST': 'db',  # Use the service name from docker-compose.yml
         'PORT': '5432',
     },
     Database.HISTORICAL.value: {
@@ -102,8 +104,9 @@ DATABASES = {
         'NAME': 'historical_database',
         'USER': 'myuser',
         'PASSWORD': 'mypassword',
-        'HOST': 'historical_db',  # Use the service name from docker-compose.yml
-        'PORT': '5432',  # This should match the exposed port in docker-compose.yml
+        'HOST': 'localhost',  # Use the service name from docker-compose.yml
+        # 'HOST': 'historical_db',  # Use the service name from docker-compose.yml
+        'PORT': '5433',  # This should match the exposed port in docker-compose.yml
     },
 }
 
@@ -152,8 +155,6 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 CELERY_BROKER_URL = 'redis://redis:6379/0'
 CELERY_RESULT_BACKEND = 'redis://redis:6379/0'
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
-
-
 
 CELERY_BEAT_SCHEDULE = {
     'update-ohlcv-every-hour': {
