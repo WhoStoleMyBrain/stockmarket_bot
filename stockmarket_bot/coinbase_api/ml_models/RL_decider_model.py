@@ -31,7 +31,7 @@ class CustomEnv(gym.Env):
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(shape_value,), dtype=np.float64)
 
     def set_currency(self, new_currency: AbstractOHLCV):
-        self.data_handler.set_currency(new_currency)
+        self.data_handler.set_currency(new_currency, False)
 
     def step(self, action) -> Tuple[npt.NDArray[np.float16], float, bool, Dict[Any, Any]]:
         next_state, cost_for_action, done, info = self.data_handler.update_state(action)
@@ -44,7 +44,7 @@ class CustomEnv(gym.Env):
 
         if total_volume < self.data_handler.initial_volume / 10:
             done = True
-            logging.debug(f'Done: {done}')
+            logging.debug(f'Finishing training early due to low volume!')
             logging.debug(f'Total time steps: {self.data_handler.total_steps}')
             logging.debug(f'Initial timestamp: {self.data_handler.initial_timestamp}')
             logging.debug(f'Current timestamp: {self.data_handler.timestamp}')

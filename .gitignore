@@ -140,7 +140,9 @@ GitHub.sublime-settings
 
 # Tensorboard Logs
 # **events.out.tfevents**
-**/coinbase_api/ml_models/active_trainings
+
+# active trainings
+**/coinbase_api/ml_models/active_trainings/*
 
 # Data Export as parquet files
 **/crypto_data_export

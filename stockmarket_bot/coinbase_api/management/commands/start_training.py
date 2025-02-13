@@ -11,6 +11,7 @@ from coinbase_api.ml_models.data_handlers.simulation_data_handler import Simulat
 from coinbase_api.ml_models.rl_model_logging_callback import RLModelLoggingCallback
 from coinbase_api.models.generated_models import *
 from coinbase_api.constants import crypto_models
+import torch
 
 CONFIG_FILE_PATH = 'coinbase_api/ml_models/training_configs/training_config_1.json'
 ACTIVE_TRAININGS_PATH = 'coinbase_api/ml_models/active_trainings'
@@ -65,6 +66,10 @@ class Command(BaseCommand):
             json.dump(config, f, indent=4)
 
     def handle(self, *args, **kwargs):
+        #! stable baselines3 PPO is supposed to be run on CPU
+        #! Disabling GPU 
+        torch.cuda.is_available = lambda : False
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         config_path = kwargs.get('config', CONFIG_FILE_PATH)
         continue_training = kwargs.get('continue_training', None)
 
@@ -112,7 +117,10 @@ class Command(BaseCommand):
             clip_range = phase.get('clip_range', 0.2)
             batch_size = phase.get('batch_size', 64)
             n_epochs = phase.get('n_epochs', 10)
-            checkpoint_callback = CheckpointCallback(save_freq=10000, save_path=f"{active_training_path}_checkpoint", name_prefix='rl_model_checkpoint')
+            reward_function_index = phase.get('reward_function_index', 0)
+            noise_level = phase.get('noise_level', 0.00)
+            slippage_level = phase.get('slippage_level', 0.00)
+            checkpoint_callback = CheckpointCallback(save_freq=100000, save_path=f"{active_training_path}_checkpoint", name_prefix='rl_model_checkpoint')
 
             interval_list = [interval for interval, weight in zip(intervals, interval_weights) for _ in range(weight)]
 
@@ -136,18 +144,28 @@ class Command(BaseCommand):
                 print(f"Clip Range: {clip_range}")
                 print(f"Batch Size: {batch_size}")
                 print(f"N Epochs: {n_epochs}")
+                print(f"reward function index: {reward_function_index}")
+                print(f"noise_level: {noise_level}")
+                print(f"slippage level: {slippage_level}")
                 print(f"net_arch: {net_arch}")
 
                 print(f'Starting training with interval: {interval}')
+                
+                items_for_datahandler = {
+                    'transaction_cost_factor':interval_transaction_costs,
+                    'reward_function_index':reward_function_index,
+                    'noise_level':noise_level,
+                    'slippage_level':slippage_level
+                }
                 if self.model is None or self.model.n_steps != interval:
                     if os.path.exists(model_path):
                         print('Loaded model!')
-                        env = CustomEnv(data_handler=SimulationDataHandler(BTC ,total_steps=interval, transaction_cost_factor=interval_transaction_costs))
+                        env = CustomEnv(data_handler=SimulationDataHandler(BTC ,total_steps=interval, *items_for_datahandler))
                         self.env = env
                         self.model = PPO.load(model_path, env=env)
                         self.model.tensorboard_log = log_dir
                     else:
-                        env = CustomEnv(data_handler=SimulationDataHandler(BTC, total_steps=interval, transaction_cost_factor=interval_transaction_costs))
+                        env = CustomEnv(data_handler=SimulationDataHandler(BTC, total_steps=interval, *items_for_datahandler))
                         self.env = env
                         self.model = PPO(
                             CustomPolicy,
@@ -165,7 +183,7 @@ class Command(BaseCommand):
                     self.model.n_steps = interval
                     self.model._setup_model()
                 else:
-                    env = CustomEnv(data_handler=SimulationDataHandler(BTC, total_steps=interval, transaction_cost_factor=interval_transaction_costs))
+                    env = CustomEnv(data_handler=SimulationDataHandler(BTC, total_steps=interval, *items_for_datahandler))
                     self.env = env
                     self.model.set_env(env)
                     self.model.learning_rate = lr_schedule

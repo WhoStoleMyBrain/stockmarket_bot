@@ -17,7 +17,7 @@ except ImportError:
     ds = None  # Fall back to in-memory filtering if PyArrow is not available
 
 class SimulationDataHandler:
-    def __init__(self, crypto: AbstractOHLCV, initial_volume=1000, total_steps=1024, transaction_cost_factor=1.0, reward_function_index=0, noise_level=0.01) -> None:
+    def __init__(self, crypto: AbstractOHLCV, initial_volume=1000, total_steps=1024, transaction_cost_factor=1.0, reward_function_index=0, noise_level=0.01, slippage_level=0.00) -> None:
         logging.basicConfig(
             filename='/logs/sim_logs/simulation.log',
             level=logging.INFO,
@@ -26,9 +26,12 @@ class SimulationDataHandler:
         self.crypto = crypto
         self.timestamp_to_index = {}
         self.holding_actions = []
+        self.winning_trades = 0
+        self.losing_trades = 0
         self.bracketSells:list[BracketSellItem] = []
         self.timing_count = 0
         self.noise_level = noise_level
+        self.slippage_level = slippage_level
         self.logger = logging.getLogger(__name__)
         self.reward_function_index = reward_function_index
         reward_function_index_max = 2
@@ -278,9 +281,8 @@ class SimulationDataHandler:
         holdings = np.array(list(self.account_holdings.values()))
         self.total_volume = np.sum(holdings * crypto_price) + self.usdc_held
         
-        if self.step_count >= self.total_steps - 1:
-            self.logger.info(f"finished training with: {self.total_volume:.2f}$. Holding actions: {sum(self.holding_actions)} / {len(self.holding_actions)}")
-            # print(f"finished training with: {self.total_volume:.2f}$. Holding actions: {sum(self.holding_actions)} / {len(self.holding_actions)}")
+        if self.step_count >= self.total_steps - 1 and self.total_volume != 0.0:
+            self.logger.info(f"finished training with: {self.total_volume:.2f}$. Holding actions: {sum(self.holding_actions)} / {len(self.holding_actions)}. profitable trades: {self.winning_trades}. losing trades: {self.losing_trades}")
         new_crypto_data = self.get_new_crypto_data()
         state = np.concatenate((np.array([self.total_volume, self.usdc_held]),
                                 holdings, new_crypto_data))
@@ -299,8 +301,8 @@ class SimulationDataHandler:
     def apply_latency(self, percentage: float = 2.0) -> bool:
         return random.uniform(0, 100) < percentage
     
-    def set_currency(self, new_currency: AbstractOHLCV):
-        print(f"setting crypto from {self.crypto.symbol} to {new_currency.symbol}")
+    def set_currency(self, new_currency: AbstractOHLCV, verbose=True):
+        self.logger.info(f"setting crypto from {self.crypto.symbol} to {new_currency.symbol}")
         self.crypto = new_currency
         self.timestamp_to_index = {}
         self.account_holdings = {self.crypto.symbol: 0.0}
@@ -324,15 +326,13 @@ class SimulationDataHandler:
         self.holding_actions.append(hold)
         available_liquidity = self.usdc_held - self.costs_for_action
         if is_buy and not self.apply_latency():
-            # print(f"available_liquidity: {available_liquidity}. self.usdc_held: {self.usdc_held}. self.costs_for_action: {self.costs_for_action}")
             mapped_buy = max((action[0] - self.action_factor) / (1 - self.action_factor), 0)
-            buy_amount = available_liquidity * mapped_buy
-            # buy_amount = self.apply_slippage_to_value(available_liquidity, -1) * mapped_buy
+            # buy_amount = available_liquidity * mapped_buy
+            buy_amount = self.apply_slippage_to_value(available_liquidity, -1) * mapped_buy
             coins = buy_amount / crypto_value
             self.account_holdings[self.crypto.symbol] += max(coins, 0)
             self.usdc_held = max(self.usdc_held - buy_amount - self.costs_for_action, 0)
             self.bracketSells.append(BracketSellItem(self.crypto, coins, crypto_value))
-            # print(f"mapped_buy: {mapped_buy}. buy_amount: {buy_amount}. coins: {coins}. crypto_value: {crypto_value}. self.account_holdings: {self.account_holdings}. self.usdc_held: {self.usdc_held}")
         # handle bracket selling
         self.handle_bracket_sells(crypto_value)
         self.timestamp += timedelta(minutes=5)
@@ -348,15 +348,16 @@ class SimulationDataHandler:
     def handle_bracket_sells(self, crypto_value: float):
         brackets_to_sell = [i for i, bracket in enumerate(self.bracketSells) if bracket.sellItem(crypto_value)]
         for i in brackets_to_sell:
-            # print(f"pre sell: {i+1}/{len(self.bracketSells)}: self.usdc_held: {self.usdc_held}. self.account_holdings: {self.account_holdings}. crypto_value: {crypto_value}")
             sell_amount = self.bracketSells[i].cryptoAmount
-            total_sell_value = sell_amount * crypto_value
-            # total_sell_value = self.apply_slippage_to_value(sell_amount, -1) * crypto_value
+            # total_sell_value = sell_amount * crypto_value
+            total_sell_value = self.apply_slippage_to_value(sell_amount, -1) * crypto_value
             self.usdc_held = max(self.usdc_held + total_sell_value - self.get_sell_fees(total_sell_value), 0)
             self.account_holdings[self.crypto.symbol] = max(self.account_holdings[self.crypto.symbol] - sell_amount, 0)
-            # print(f"sell: {i+1}/{len(self.bracketSells)}: {sell_amount:.2f} {self.crypto.symbol}. sold: {total_sell_value:.2f}. initial:{self.bracketSells[i].cryptoAmount *self.bracketSells[i].cryptoValue:.2f}. gain?{total_sell_value > self.bracketSells[i].cryptoAmount *self.bracketSells[i].cryptoValue}. usdc: {self.usdc_held:.2f}. {self.crypto.symbol}: {self.account_holdings[self.crypto.symbol]:.2f}. total volume: {self.total_volume:.2f}")
+            if (total_sell_value > sell_amount * self.bracketSells[i].cryptoValue):
+                self.winning_trades += 1
+            else:
+                self.losing_trades += 1
         self.bracketSells = [bracket for i, bracket in enumerate(self.bracketSells) if i not in brackets_to_sell]
-        # print(f"sells after reducing number: {len(self.bracketSells)}")
 
     def get_sell_fees(self, total_value: float):
         return total_value * self.taker_fee * self.transaction_cost_factor
@@ -372,18 +373,18 @@ class SimulationDataHandler:
     def get_crypto_values_from_cache_vectorized(self, timestamp: datetime) -> np.ndarray:
         return np.array([self.get_crypto_value_from_cache(self.crypto.symbol, timestamp)], dtype=np.float32)
 
-    def reset_state(self) -> npt.NDArray[np.float16]:
-        self.logger.info("Resetting state")
-        # Log initial state information
-        self.logger.info(f"Total steps: {self.total_steps}")
-        self.logger.info(f"Initial timestamp: {self.initial_timestamp}")
-        self.logger.info(f"Current timestamp: {self.timestamp}")
-        self.logger.info(f"Step number: {self.step_count}")
-        self.logger.info(f"USDC held before reset: {self.usdc_held}")
-        self.logger.info(f"Crypto values before reset: {self.account_holdings}")
-        self.logger.info(f"Total Volume: {self.total_volume}")
-        if sum(self.holding_actions) != 0 and len(self.holding_actions) > 0:
-            self.logger.info(f"Resetting training with: {self.total_volume:.2f}$. Holding actions: {sum(self.holding_actions)} / {len(self.holding_actions)}")
+    def reset_state(self, verbose=True) -> npt.NDArray[np.float16]:
+        if verbose:
+            if (self.initial_timestamp == self.timestamp and (self.step_count == 0 or self.step_count ==self.total_steps)):
+                self.logger.info("Reset at beginning of training...")
+                verbose = False
+            else:
+                self.logger.info(f"Reset: Step: {self.step_count}/{self.total_steps}. ")
+                # Log initial state information
+                self.logger.info(f"Initial timestamp: {self.initial_timestamp}. Current timestamp: {self.timestamp}")
+                self.logger.info(f"USDC: {self.usdc_held}. Crypto: {self.account_holdings}. Total Volume: {self.total_volume}")
+                if sum(self.holding_actions) != 0 and len(self.holding_actions) > 0:
+                    self.logger.info(f"Resetting training with: {self.total_volume:.2f}$. Holding actions: {sum(self.holding_actions)} / {len(self.holding_actions)}")
         self.step_count = 0
         self.action_factor = 0.2
         self.initial_timestamp = None
@@ -393,9 +394,12 @@ class SimulationDataHandler:
         self.total_volume = self.initial_volume
         self.usdc_held = self.initial_volume  # Initialize USDC in memory
         self.account_holdings = {self.crypto.symbol: 0 }
-        self.logger.info(f"after reset: initial volume: {self.initial_volume}. total volume: {self.total_volume}. usdc_held: {self.usdc_held}. account holdings: {self.account_holdings}")
+        if verbose:
+            self.logger.info(f"after reset: initial volume: {self.initial_volume}. total volume: {self.total_volume}. usdc_held: {self.usdc_held}. account holdings: {self.account_holdings}")
         self.bracketSells:list[BracketSellItem] = []
         self.holding_actions = []
+        self.winning_trades = 0
+        self.losing_trades = 0
         self.feature_indices = [i for i, feature in enumerate(simulation_columns) if feature in crypto_features]
         
         self.earliest_timestamp = self.get_earliest_timestamp()

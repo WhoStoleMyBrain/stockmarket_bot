@@ -278,4 +278,11 @@ class BracketSellItem:
         ratio = currentValue / self.cryptoValue
         return ratio > self.bracketUp or ratio < self.bracketDown
     
+    def isWinningTrade(self, currentValue: float) -> bool:
+        ratio = currentValue / self.cryptoValue
+        return ratio > self.bracketUp
+    
+    def isLosingTrade(self, currentValue: float) -> bool:
+        ratio = currentValue / self.cryptoValue
+        return ratio < self.bracketDown
     
