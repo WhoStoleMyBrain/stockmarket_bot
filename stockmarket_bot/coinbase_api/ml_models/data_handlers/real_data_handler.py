@@ -1,6 +1,7 @@
 from typing import Any, Dict, List, Tuple
 import numpy as np
 import numpy.typing as npt
+import requests
 from coinbase_api.enums import Actions, Database, Granularities
 from coinbase_api.ml_models.data_handlers.abstract_data_handler import AbstractDataHandler
 from coinbase_api.models.generated_models import ETH
@@ -8,22 +9,59 @@ from coinbase_api.models.models import AbstractOHLCV, Account, Prediction
 from datetime import datetime, timedelta
 from coinbase_api.utilities.prediction_handler import PredictionHandler
 from coinbase_api.views.views import cb_auth
-from coinbase_api.constants import crypto_models, crypto_features, crypto_predicted_features, crypto_extra_features
+from coinbase_api.constants import SECOND_API_KEY, SECOND_API_SECRET, API_KEY, API_SECRET,crypto_models, crypto_features, crypto_predicted_features, crypto_extra_features
+from coinbase.rest import RESTClient
+import json
+from coinbase import jwt_generator
+import http.client
+
 
 class RealDataHandler(AbstractDataHandler):
     def __init__(self, initial_volume = 0) -> None:
-        crypto_wallets = cb_auth.restClientInstance.get_accounts()
+        # client = RESTClient(api_key=API_KEY, api_secret=API_SECRET)
+        # accounts = client.get_accounts()
+        # print(dumps(accounts.to_dict(), indent=2))
+        # Cdp.configure(API_KEY, API_SECRET)
+        request_method = "GET"
+        request_path = "/api/v3/brokerage/accounts"
+        base_url = "https://api.coinbase.com"
+        jwt_uri = jwt_generator.format_jwt_uri(request_method, request_path)
+        jwt_token = jwt_generator.build_rest_jwt(jwt_uri, SECOND_API_KEY, SECOND_API_SECRET)
+        print(jwt_token)
+        conn = http.client.HTTPSConnection("api.coinbase.com")
+        payload = ''
+        headers = {
+            "Authorization": f"Bearer {jwt_token}",
+            "Content-Type": "application/json"
+        }
+        # conn.request("GET", "/api/v3/brokerage/key_permissions", payload, headers)
+        # conn.request("GET", "/api/v3/brokerage/accounts", payload, headers)
+        response = requests.get(f"{base_url}{request_path}", headers=headers)
+        # res = conn.getresponse()
+        # data = res.read()
+        # print(data.decode("utf-8"))
+        # print(response.status_code)
+        # response.
+        # print(response.content)
+        crypto_wallets = json.loads(response.content.decode())
+        # print(crypto_wallets)
+        # print(crypto_wallets["accounts"])
+        # print(crypto_wallets["accounts"][0])
+        # print(crypto_wallets["accounts"][0]["available_balance"])
+        # return
+        # crypto_wallets = cb_auth.restClientInstance.get_accounts()
         #! TODO: Implement more fetching if has_next is true
         self.wallets_dict = {wallet["available_balance"]["currency"]: wallet["available_balance"]["value"] for wallet in crypto_wallets["accounts"]}
         self.initial_volume = self.calculate_total_volume()
         self.total_volume = self.initial_volume
         print(self.wallets_dict)
+        print(self.total_volume)
         self.action_factor = 0.2
         self.timestamp = datetime.now()
         self.database: Database = Database.DEFAULT.value
         self.crypto_models:List[AbstractOHLCV] = crypto_models
         self.account_holdings = [0 for _ in self.crypto_models]
-        self.prediction_handler = PredictionHandler(lstm_sequence_length=100, database=self.database)
+        # self.prediction_handler = PredictionHandler(lstm_sequence_length=100, database=self.database)
         # self.prediction_handler.predict()
     
     def update_state(self, action) -> Tuple[npt.NDArray[np.float16], float, bool, Dict[Any, Any]]:
@@ -46,6 +84,7 @@ class RealDataHandler(AbstractDataHandler):
         return np.array([self.total_volume, self.usdc_held] + self.account_holdings + self.new_crypto_data)
     
     def calculate_total_volume(self):
+        #! needs crypto values!
         return sum([float(val) for _, val in self.wallets_dict.items()])
     
     def get_account_holdings(self):
@@ -61,7 +100,7 @@ class RealDataHandler(AbstractDataHandler):
             if (crypto_latest == None):
                 crypto_latest = crypto.default_entry(self.timestamp)
             all_entries = all_entries + self.crypto_to_list(crypto_latest)
-            all_entries = all_entries + self.get_new_prediction_data(crypto, crypto_latest.timestamp)
+            # all_entries = all_entries + self.get_new_prediction_data(crypto, crypto_latest.timestamp)
         return all_entries
     
     def get_new_prediction_data(self, crypto_model:AbstractOHLCV, timestamp:datetime) -> List[float]:

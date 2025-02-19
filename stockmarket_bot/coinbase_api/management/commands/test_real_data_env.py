@@ -19,6 +19,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **kwargs):
         data_handler = RealDataHandler()
+        return
         # action = [0.0 for i in range(len(crypto_models))]
         model_path = 'coinbase_api/ml_models/rl_model.pkl'
         # data_handler.update_state(action)

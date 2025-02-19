@@ -1,0 +1,225 @@
+[
+    {
+        "channel": "user",
+        "client_id": "",
+        "timestamp": "2025-02-16T08:26:35.767796796Z",
+        "sequence_num": 0,
+        "events": [
+            {
+                "type": "snapshot",
+                "orders": [],
+                "positions": {
+                    "perpetual_futures_positions": [],
+                    "expiring_futures_positions": []
+                }
+            }
+        ]
+    },
+    {
+        "channel": "subscriptions",
+        "client_id": "",
+        "timestamp": "2025-02-16T08:26:35.767815357Z",
+        "sequence_num": 1,
+        "events": [
+            {
+                "subscriptions": {
+                    "user": [
+                        "2cc964c2-2f11-518c-80c7-acdaa56f2170"
+                    ]
+                }
+            }
+        ]
+    },
+    {
+        "channel": "user",
+        "client_id": "",
+        "timestamp": "2025-02-16T08:28:35.516989795Z",
+        "sequence_num": 2,
+        "events": [
+            {
+                "type": "update",
+                "orders": [
+                    {
+                        "avg_price": "0",
+                        "cancel_reason": "",
+                        "client_order_id": "eb33b532-771a-4432-b443-16bdc35c08c1",
+                        "completion_percentage": "0",
+                        "contract_expiry_type": "UNKNOWN_CONTRACT_EXPIRY_TYPE",
+                        "cumulative_quantity": "0",
+                        "filled_value": "0",
+                        "leaves_quantity": "0.746",
+                        "limit_price": "3.394",
+                        "number_of_fills": "0",
+                        "order_id": "7aafde8c-7cf4-4939-aff2-3fc5f42f4863",
+                        "order_side": "SELL",
+                        "order_type": "Limit",
+                        "outstanding_hold_amount": "0",
+                        "post_only": "false",
+                        "product_id": "NEAR-USDC",
+                        "product_type": "SPOT",
+                        "reject_Reason": "",
+                        "retail_portfolio_id": "2cc964c2-2f11-518c-80c7-acdaa56f2170",
+                        "risk_managed_by": "UNKNOWN_RISK_MANAGEMENT_TYPE",
+                        "status": "PENDING",
+                        "stop_price": "",
+                        "time_in_force": "GOOD_UNTIL_CANCELLED",
+                        "total_fees": "0",
+                        "total_value_after_fees": "2.51293457",
+                        "trigger_status": "INVALID_ORDER_TYPE",
+                        "creation_time": "2025-02-16T08:28:35.373422Z",
+                        "end_time": "0001-01-01T00:00:00Z",
+                        "start_time": "0001-01-01T00:00:00Z"
+                    }
+                ],
+                "positions": {
+                    "perpetual_futures_positions": [],
+                    "expiring_futures_positions": []
+                }
+            }
+        ]
+    },
+    {
+        "channel": "user",
+        "client_id": "",
+        "timestamp": "2025-02-16T08:28:35.51706406Z",
+        "sequence_num": 3,
+        "events": [
+            {
+                "type": "update",
+                "orders": [
+                    {
+                        "avg_price": "0",
+                        "cancel_reason": "",
+                        "client_order_id": "eb33b532-771a-4432-b443-16bdc35c08c1",
+                        "completion_percentage": "0",
+                        "contract_expiry_type": "UNKNOWN_CONTRACT_EXPIRY_TYPE",
+                        "cumulative_quantity": "0",
+                        "filled_value": "0",
+                        "leaves_quantity": "0.746",
+                        "limit_price": "3.394",
+                        "number_of_fills": "0",
+                        "order_id": "7aafde8c-7cf4-4939-aff2-3fc5f42f4863",
+                        "order_side": "SELL",
+                        "order_type": "Limit",
+                        "outstanding_hold_amount": "0.746",
+                        "post_only": "false",
+                        "product_id": "NEAR-USDC",
+                        "product_type": "SPOT",
+                        "reject_Reason": "",
+                        "retail_portfolio_id": "2cc964c2-2f11-518c-80c7-acdaa56f2170",
+                        "risk_managed_by": "UNKNOWN_RISK_MANAGEMENT_TYPE",
+                        "status": "OPEN",
+                        "stop_price": "",
+                        "time_in_force": "GOOD_UNTIL_CANCELLED",
+                        "total_fees": "0",
+                        "total_value_after_fees": "2.51293457",
+                        "trigger_status": "INVALID_ORDER_TYPE",
+                        "creation_time": "2025-02-16T08:28:35.373422Z",
+                        "end_time": "0001-01-01T00:00:00Z",
+                        "start_time": "0001-01-01T00:00:00Z"
+                    }
+                ],
+                "positions": {
+                    "perpetual_futures_positions": [],
+                    "expiring_futures_positions": []
+                }
+            }
+        ]
+    },
+    {
+        "channel": "user",
+        "client_id": "",
+        "timestamp": "2025-02-16T08:28:45.766609571Z",
+        "sequence_num": 4,
+        "events": [
+            {
+                "type": "update",
+                "orders": [
+                    {
+                        "avg_price": "3.394",
+                        "cancel_reason": "",
+                        "client_order_id": "eb33b532-771a-4432-b443-16bdc35c08c1",
+                        "completion_percentage": "100.00",
+                        "contract_expiry_type": "UNKNOWN_CONTRACT_EXPIRY_TYPE",
+                        "cumulative_quantity": "0.746",
+                        "filled_value": "2.531924",
+                        "leaves_quantity": "0",
+                        "limit_price": "3.394",
+                        "number_of_fills": "1",
+                        "order_id": "7aafde8c-7cf4-4939-aff2-3fc5f42f4863",
+                        "order_side": "SELL",
+                        "order_type": "Limit",
+                        "outstanding_hold_amount": "0.746",
+                        "post_only": "false",
+                        "product_id": "NEAR-USDC",
+                        "product_type": "SPOT",
+                        "reject_Reason": "",
+                        "retail_portfolio_id": "2cc964c2-2f11-518c-80c7-acdaa56f2170",
+                        "risk_managed_by": "UNKNOWN_RISK_MANAGEMENT_TYPE",
+                        "status": "FILLED",
+                        "stop_price": "",
+                        "time_in_force": "GOOD_UNTIL_CANCELLED",
+                        "total_fees": "0.008861734",
+                        "total_value_after_fees": "2.523062266",
+                        "trigger_status": "INVALID_ORDER_TYPE",
+                        "creation_time": "2025-02-16T08:28:35.373422Z",
+                        "end_time": "0001-01-01T00:00:00Z",
+                        "start_time": "0001-01-01T00:00:00Z"
+                    }
+                ],
+                "positions": {
+                    "perpetual_futures_positions": [],
+                    "expiring_futures_positions": []
+                }
+            }
+        ]
+    },
+    {
+        "channel": "user",
+        "client_id": "",
+        "timestamp": "2025-02-16T08:28:45.766680579Z",
+        "sequence_num": 5,
+        "events": [
+            {
+                "type": "update",
+                "orders": [
+                    {
+                        "avg_price": "3.394",
+                        "cancel_reason": "",
+                        "client_order_id": "eb33b532-771a-4432-b443-16bdc35c08c1",
+                        "completion_percentage": "100.00",
+                        "contract_expiry_type": "UNKNOWN_CONTRACT_EXPIRY_TYPE",
+                        "cumulative_quantity": "0.746",
+                        "filled_value": "2.531924",
+                        "leaves_quantity": "0",
+                        "limit_price": "3.394",
+                        "number_of_fills": "1",
+                        "order_id": "7aafde8c-7cf4-4939-aff2-3fc5f42f4863",
+                        "order_side": "SELL",
+                        "order_type": "Limit",
+                        "outstanding_hold_amount": "0",
+                        "post_only": "false",
+                        "product_id": "NEAR-USDC",
+                        "product_type": "SPOT",
+                        "reject_Reason": "",
+                        "retail_portfolio_id": "2cc964c2-2f11-518c-80c7-acdaa56f2170",
+                        "risk_managed_by": "UNKNOWN_RISK_MANAGEMENT_TYPE",
+                        "status": "FILLED",
+                        "stop_price": "",
+                        "time_in_force": "GOOD_UNTIL_CANCELLED",
+                        "total_fees": "0.008861734",
+                        "total_value_after_fees": "2.523062266",
+                        "trigger_status": "INVALID_ORDER_TYPE",
+                        "creation_time": "2025-02-16T08:28:35.373422Z",
+                        "end_time": "0001-01-01T00:00:00Z",
+                        "start_time": "0001-01-01T00:00:00Z"
+                    }
+                ],
+                "positions": {
+                    "perpetual_futures_positions": [],
+                    "expiring_futures_positions": []
+                }
+            }
+        ]
+    }
+]
