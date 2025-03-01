@@ -1,144 +1,131 @@
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, Tuple
 import numpy as np
 import numpy.typing as npt
-import requests
-from coinbase_api.enums import Actions, Database, Granularities
+from coinbase_api.enums import Actions
 from coinbase_api.ml_models.data_handlers.abstract_data_handler import AbstractDataHandler
-from coinbase_api.models.generated_models import ETH
-from coinbase_api.models.models import AbstractOHLCV, Account, Prediction
-from datetime import datetime, timedelta
-from coinbase_api.utilities.prediction_handler import PredictionHandler
-from coinbase_api.views.views import cb_auth
-from coinbase_api.constants import SECOND_API_KEY, SECOND_API_SECRET, API_KEY, API_SECRET,crypto_models, crypto_features, crypto_predicted_features, crypto_extra_features
-from coinbase.rest import RESTClient
-import json
-from coinbase import jwt_generator
-import http.client
+from coinbase_api.models.models import AbstractOHLCV
+from datetime import datetime
+from coinbase_api.utilities.cb_provider import CbProvider
 
+cb_provider = CbProvider()
 
 class RealDataHandler(AbstractDataHandler):
-    def __init__(self, initial_volume = 0) -> None:
-        # client = RESTClient(api_key=API_KEY, api_secret=API_SECRET)
-        # accounts = client.get_accounts()
-        # print(dumps(accounts.to_dict(), indent=2))
-        # Cdp.configure(API_KEY, API_SECRET)
-        request_method = "GET"
-        request_path = "/api/v3/brokerage/accounts"
-        base_url = "https://api.coinbase.com"
-        jwt_uri = jwt_generator.format_jwt_uri(request_method, request_path)
-        jwt_token = jwt_generator.build_rest_jwt(jwt_uri, SECOND_API_KEY, SECOND_API_SECRET)
-        print(jwt_token)
-        conn = http.client.HTTPSConnection("api.coinbase.com")
-        payload = ''
-        headers = {
-            "Authorization": f"Bearer {jwt_token}",
-            "Content-Type": "application/json"
-        }
-        # conn.request("GET", "/api/v3/brokerage/key_permissions", payload, headers)
-        # conn.request("GET", "/api/v3/brokerage/accounts", payload, headers)
-        response = requests.get(f"{base_url}{request_path}", headers=headers)
-        # res = conn.getresponse()
-        # data = res.read()
-        # print(data.decode("utf-8"))
-        # print(response.status_code)
-        # response.
-        # print(response.content)
-        crypto_wallets = json.loads(response.content.decode())
-        # print(crypto_wallets)
-        # print(crypto_wallets["accounts"])
-        # print(crypto_wallets["accounts"][0])
-        # print(crypto_wallets["accounts"][0]["available_balance"])
-        # return
-        # crypto_wallets = cb_auth.restClientInstance.get_accounts()
-        #! TODO: Implement more fetching if has_next is true
-        self.wallets_dict = {wallet["available_balance"]["currency"]: wallet["available_balance"]["value"] for wallet in crypto_wallets["accounts"]}
-        self.initial_volume = self.calculate_total_volume()
+    def __init__(self, crypto: AbstractOHLCV, initial_volume = 0) -> None:
+        self.crypto = crypto
+        self.wallets_dict = cb_provider.get_wallets()
+        self.initial_volume = cb_provider.get_total_volume()
         self.total_volume = self.initial_volume
-        print(self.wallets_dict)
-        print(self.total_volume)
-        self.action_factor = 0.2
+        
+        self.action_factor = 0.5 #TODO action factor mapping?
         self.timestamp = datetime.now()
-        self.database: Database = Database.DEFAULT.value
-        self.crypto_models:List[AbstractOHLCV] = crypto_models
-        self.account_holdings = [0 for _ in self.crypto_models]
-        # self.prediction_handler = PredictionHandler(lstm_sequence_length=100, database=self.database)
-        # self.prediction_handler.predict()
-    
+        self.account_holding = cb_provider.get_account_holding(self.crypto)
+        
     def update_state(self, action) -> Tuple[npt.NDArray[np.float16], float, bool, Dict[Any, Any]]:
         self.costs_for_action = self.cost_for_action(action)
         done = False
         info = {}
         self.next_state = self.get_current_state()
-        # print(f'updating state to {self.next_state}')
-        return self.next_state, sum(self.costs_for_action), done, info
+        return self.next_state, self.costs_for_action, done, info
     
     def reset_state(self) -> npt.NDArray[np.float16]:
-        initial_state = self.get_current_state()
-        return initial_state
+        self.wallets_dict = cb_provider.get_wallets()
+        return self.get_current_state()
     
     def get_current_state(self):
-        self.total_volume = self.calculate_total_volume()
-        self.account_holdings = self.get_account_holdings()
-        self.new_crypto_data = self.get_new_crypto_data()
-        self.usdc_held = self.get_liquidity()
-        return np.array([self.total_volume, self.usdc_held] + self.account_holdings + self.new_crypto_data)
+        self.total_volume = cb_provider.get_total_volume()
+        self.account_holding = cb_provider.get_account_holding(self.crypto)
+        self.new_crypto_data = cb_provider.get_crypto_data(self.crypto)
+        self.usdc_held = cb_provider.get_liquidity()
+        return np.array([self.total_volume, self.usdc_held, self.account_holding] + self.new_crypto_data)
     
-    def calculate_total_volume(self):
-        #! needs crypto values!
-        return sum([float(val) for _, val in self.wallets_dict.items()])
+    # def set_currency(self, new_currency: AbstractOHLCV, verbose=True):
+    #     self.crypto = new_currency
+    #     self.account_holdings = self.get_account_holdings()
+    #     self.state = self.get_current_state()
+        
+    # def get_product_types(self):
+    #     return [f"{crypto.symbol}-USDC" for crypto in crypto_models]
     
-    def get_account_holdings(self):
-        return [float(self.wallets_dict[crypto_model.symbol]) if crypto_model.symbol in self.wallets_dict.keys() else 0.0 for crypto_model in crypto_models]
+    # def calculate_total_volume(self):
+    #     request_body = {
+    #         "get_all_products": "true",
+    #     }
+    #     all_products = api_request_with_auth(ApiPath.PRODUCTS.value, request_method=Method.GET, request_body=request_body)
+    #     products = all_products["products"]
+    #     usable_products = [item for item in products if item["product_id"] in self.get_product_types()]
+    #     products_reduced = {item["product_id"]: item["price"] for item in usable_products}
+    #     total = sum([float(val) * float(products_reduced[f"{key}-USDC"]) for key, val in self.wallets_dict.items() if f"{key}-USDC" in products_reduced.keys()])
+    #     total_with_usdc = total + float(self.wallets_dict["USDC"])
+    #     return total_with_usdc
     
-    def get_liquidity(self) -> float:
-        return float(self.wallets_dict['USDC'])
+    # def get_account_holdings(self):
+    #     return [float(self.wallets_dict[crypto_model.symbol]) if crypto_model.symbol in self.wallets_dict.keys() else 0.0 for crypto_model in crypto_models]
+    
+    # def get_liquidity(self) -> float:
+    #     return float(self.wallets_dict['USDC'])
             
-    def get_new_crypto_data(self):
-        all_entries = []
-        for crypto in self.crypto_models:
-            crypto_latest = crypto.objects.using(self.database).latest('timestamp')
-            if (crypto_latest == None):
-                crypto_latest = crypto.default_entry(self.timestamp)
-            all_entries = all_entries + self.crypto_to_list(crypto_latest)
-            # all_entries = all_entries + self.get_new_prediction_data(crypto, crypto_latest.timestamp)
-        return all_entries
+    # def get_new_crypto_data(self):
+    #     all_entries = []
+    #     start = datetime.now() - timedelta(minutes=5*50)
+    #     end = datetime.now() + timedelta(minutes=1)
+    #     raw_data = self.get_crypto_raw_candles(start, end, self.crypto.symbol)
+    #     crypto_instances = self.parse_raw_data(self.crypto, raw_data["candles"])
+    #     crypto_instance_now: AbstractOHLCV = self.add_calculated_parameters(crypto_instances)
+    #     all_entries = all_entries + self.crypto_to_list(crypto_instance_now)
+    #     return all_entries
+
+    # def get_crypto_raw_candles(self, start, end, crypto_symbol):
+    #     raw_data = api_request_with_auth(
+    #         request_path=f"{ApiPath.PRODUCTS.value}/{crypto_symbol}-USDC/candles",
+    #         request_method=Method.GET,
+    #         request_body = {
+    #             "start" : str(int(datetime.timestamp(start))),
+    #             "end": str(int(datetime.timestamp(end))),
+    #             "granularity": Granularities.FIVE_MINUTE.value
+    #         })
+            
+    #     return raw_data
     
-    def get_new_prediction_data(self, crypto_model:AbstractOHLCV, timestamp:datetime) -> List[float]:
-        all_entries = []
-        ml_models = ['LSTM', 'XGBoost']
-        prediction_shifts = [1,24,168]
-        for model in ml_models:
-            for prediction_shift in prediction_shifts:
-                try:
-                    entry = Prediction.objects.using(self.database).get(
-                        crypto=crypto_model.__name__,
-                        timestamp_predicted_for = timestamp, 
-                        model_name = model, 
-                        predicted_field = f'close_higher_shifted_{prediction_shift}h'
-                    )
-                    if (np.isnan(entry.predicted_value)):
-                        all_entries.append(0.0)
-                    else:
-                        all_entries.append(entry.predicted_value)
-                except Prediction.DoesNotExist:
-                    print(f'Prediction {crypto_model.__name__}, {timestamp}, {model}, close_higher_shifted_{prediction_shift}h Does not exist')
-                    all_entries.append(0.0)
-        return all_entries
+    # def parse_raw_data(self, crypto_model: AbstractOHLCV, data) -> List[AbstractOHLCV]:
+    #     try:
+    #         entries = []
+    #         for item in data:
+    #             try:
+    #                 timestamp = float(item["start"])
+    #                 low = float(item["low"])
+    #                 high = float(item["high"])
+    #                 opening = float(item["open"])
+    #                 close_base = float(item["close"])
+    #                 volume = float(item["volume"])
+                    
+    #                 new_entry = crypto_model(
+    #                     timestamp=datetime.fromtimestamp(int(timestamp), tz=timezone.utc),
+    #                     open=opening,
+    #                     high=high,
+    #                     low=low,
+    #                     close=close_base,
+    #                     volume=volume,
+    #                 )
+    #                 entries.append(new_entry)
+    #             except Exception as e:
+    #                 print(f'Encountered an error with item {item}: {e}')
+    #         return entries
+    #     except Exception as e:
+    #         print(f'Encountered the following error: {e}')
     
     def cost_for_action(self, action):
         print('TODO: Implement cost for action method')
-        return [0]
+        return 0
     
-    def get_crypto_features(self) -> List[str]:
-        return crypto_features
+    # def get_crypto_features(self) -> List[str]:
+    #     return crypto_features
 
-    def get_crypto_predicted_features(self) -> List[str]:
-        return crypto_predicted_features
+    # def get_crypto_predicted_features(self) -> List[str]:
+    #     return crypto_predicted_features
     
-    def crypto_to_list(self, crypto: AbstractOHLCV) -> List[float]:
-        attributes = [getattr(crypto, fieldname)for fieldname in self.get_crypto_features()]
-        
-        return [attr if attr != None else 0.0 for attr in attributes]
+    # def crypto_to_list(self, crypto: AbstractOHLCV) -> List[float]:
+    #     attributes = [getattr(crypto, fieldname)for fieldname in self.get_crypto_features()]
+    #     return [attr if attr != None else 0.0 for attr in attributes]
     
     def get_step_count(self) -> int:
         #! needs implementation
@@ -153,59 +140,5 @@ class RealDataHandler(AbstractDataHandler):
     
     def get_reward(self, action: Actions)-> float:
         reward = ((self.total_volume / self.initial_volume) - 1)*3
-        cost_for_action = sum(self.cost_for_action(action))
+        cost_for_action = self.cost_for_action(action)
         return reward - cost_for_action*0.25 #! not full scope since this would scale awkwardly. Cost = 4 usdc = -4, which is not reachable the other way around
-    
-    def check_total_liquidity(self) -> None:
-        #! not needed anymore
-        crypto_wallets = cb_auth.restClientInstance.get_accounts()
-        #! TODO: Implement more fetching if has_next is true
-        wallets = crypto_wallets['accounts']
-        total_liquidity = 0
-        for wallet in wallets:
-            currency = wallet["available_balance"]["currency"]
-            value = wallet["available_balance"]["value"]
-            crypto_model_list = [cpt_model for cpt_model in crypto_models if cpt_model.symbol == currency]
-            if (len(crypto_model_list) == 0):
-                # can not find: USDC, ETH2, EUR. 
-                if currency == 'ETH2': #special case, is called eth2 but in trade is called eth
-                    crypto_model = ETH
-                    crypto_candles = cb_auth.restClientInstance.get_candles(f'ETH-USDC', int(datetime.timestamp(start)), int(datetime.timestamp(end)), granularity=Granularities.ONE_HOUR.value)
-                    price = crypto_candles['candles'][0]['close']
-                    final_value = float(value) * float(price)
-                    print(f'final value for ETH: {final_value} = {float(value)} * {float(price)}')
-                elif currency == 'EUR':
-                    crypto_candles = cb_auth.restClientInstance.get_candles(f'USDC-EUR', int(datetime.timestamp(start)), int(datetime.timestamp(end)), granularity=Granularities.ONE_HOUR.value)
-                    price = crypto_candles['candles'][0]['close']
-                    final_value = float(value) / float(price)
-                    print(f'final value for EUR: {final_value}')
-                elif currency == 'USDC':
-                    final_value = float(value)
-                    print(f'final value for USDC: {final_value}')
-                else:
-                    print(f'could not find {currency} as a model. skipping...')
-                    continue
-            else:
-                crypto_model = crypto_model_list[0]
-                end = datetime.now()
-                start = end - timedelta(hours=2, minutes=1)
-                crypto_candles = cb_auth.restClientInstance.get_candles(f'{crypto_model.symbol}-USDC', int(datetime.timestamp(start)), int(datetime.timestamp(end)), granularity=Granularities.ONE_HOUR.value)
-                price = crypto_candles['candles'][-1]['close']
-                final_value = float(value) * float(price)
-                print(f'final value for {crypto_model.symbol}: {final_value} = {float(value)} * {float(price)}')
-            total_liquidity += final_value
-        print(f'total liquidity: {total_liquidity}')
-    
-    
-    
-    # get_reward_ratios_for_current_timestep()
-    
-    # setp_count
-    
-    # initial_volume
-    
-    # timestamp
-    
-    # get_liquidity_string()
-    
-    # cost_for_action()

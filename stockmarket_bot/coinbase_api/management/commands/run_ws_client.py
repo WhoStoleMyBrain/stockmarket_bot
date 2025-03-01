@@ -1,6 +1,4 @@
 import uuid
-import requests
-from coinbase import jwt_generator
 from django.core.management.base import BaseCommand
 from coinbase_api.classes.CoinbaseProduct import CoinbaseProduct
 from coinbase_api.classes.Order import Order
@@ -15,6 +13,9 @@ import threading
 from datetime import datetime
 from coinbase_api.constants import crypto_models
 import numpy as np
+
+from coinbase_api.enums import ApiPath, Method, Side
+from coinbase_api.utilities.utils import api_request_with_auth
 
     
 def load_product_data() -> dict[str: CoinbaseProduct]:
@@ -48,29 +49,16 @@ def place_sell_order(buy_order: Order):
         return
     print(f"Attempting to sell {buy_order.product_id}.")
     product_data: CoinbaseProduct = get_product_data(buy_order.product_id)
-    side = "SELL"
     base_price = buy_order.avg_price
     lower_price = float(base_price) * 0.99
     upper_price = float(base_price) * 1.03
-    product_id = buy_order.product_id
-    request_method = "POST"
-    # request_path = "/api/v3/brokerage/orders/preview"
-    request_path = "/api/v3/brokerage/orders"
-    base_url = "https://api.coinbase.com"
-    jwt_uri = jwt_generator.format_jwt_uri(request_method, request_path)
-    jwt_token = jwt_generator.build_rest_jwt(jwt_uri, SECOND_API_KEY, SECOND_API_SECRET)
-    headers = {
-        "Authorization": f"Bearer {jwt_token}",
-        "Content-Type": "application/json"
-    }
     base_size = float(buy_order.cumulative_quantity)
     base_increment = get_base_increment(product_data)
     price_increment = get_price_increment(product_data)
-    
     payload = {
         "client_order_id": str(uuid.uuid4()),
-        "product_id": product_id,
-        "side": side,
+        "product_id": buy_order.product_id,
+        "side": Side.SELL.value,
         "order_configuration": {
             "trigger_bracket_gtc": {
                 "base_size": f"{base_size:.{base_increment}f}",
@@ -79,8 +67,7 @@ def place_sell_order(buy_order: Order):
             }
         }
     }
-    response = requests.post(f"{base_url}{request_path}", headers=headers, json=payload)
-    response_decoded = json.loads(response.content.decode())
+    response_decoded = api_request_with_auth(ApiPath.ORDERS_PREVIEW.value, Method.POST, request_body = payload)
     print(f"response_decoded:\n{response_decoded}")
 
 if not SECOND_API_SECRET or not SECOND_API_KEY:

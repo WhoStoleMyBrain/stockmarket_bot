@@ -8,9 +8,11 @@ from ..models.models import AbstractOHLCV, Bitcoin, CryptoMetadata, Ethereum, Po
 import json
 
 from datetime import datetime, timedelta, timezone
-from ..enums import Granularities
+from ..enums import Granularities, Method
 from .ml_utils import add_calculated_parameters
 import json
+from coinbase_api.constants import BASE_URL, SECOND_API_KEY, SECOND_API_SECRET
+from coinbase import jwt_generator
 
 def cb_fetch_product_list():
     """
@@ -66,18 +68,47 @@ def cb_fetch_product_candles(product_id, start, end, granularity):
     """
     try:
         data = cb_auth.restClientInstance.get_candles(product_id=product_id, start=start, end=end, granularity=granularity)
-        # print(f"received data from backend. {data.to_dict()}")
         if 'errors' in data.to_dict().keys():
-            # print(data['errors'])  # Logging the error for debugging purposes
             return JsonResponse({'errors': data['errors']}, status=data.get('status', 500))
-        # If you reach here, it means the request was successful
         return JsonResponse(data.to_dict())
     
     except Exception as e:
-        # This will handle any other unforeseen exceptions
         return JsonResponse({'errors': str(e)}, status=500)
 
 
+########################  Util for handling requests that need authentication  ######################
+
+def api_request_with_auth(request_path: str, request_method: Method, request_headers:dict = {}, request_body: dict = {}):
+    base_url = BASE_URL
+    jwt_uri = jwt_generator.format_jwt_uri(request_method.value, request_path)
+    jwt_token = jwt_generator.build_rest_jwt(jwt_uri, SECOND_API_KEY, SECOND_API_SECRET)
+    headers = {
+        **request_headers,
+        "Authorization": f"Bearer {jwt_token}",
+        "Content-Type": "application/json"
+    } # replaces values in request_headers
+    
+    try:
+        if request_method == Method.GET:
+            response = requests.get(f"{base_url}{request_path}", headers=headers, params=request_body)
+        else:
+            response = requests.post(f"{base_url}{request_path}", headers=headers, data=json.dumps(request_body))
+        # Debug: print the response status and text if not 200
+        if response.status_code != 200:
+            print(f"Request failed with status code {response.request.url}: {request_body}: {response.status_code}: {response.text}")
+        
+        # Try parsing JSON; if it fails, log response.text for debugging
+        try:
+            # content = response.json()
+            content = json.loads(response.content.decode())
+        except Exception as json_err:
+            print(f"JSON parsing error: {json_err}. Response text: {response.text}")
+            return {}
+        
+    except Exception as e:
+        print(f"Request not successfull. {base_url}{request_path}. {request_method}. {headers}. {request_body}. errors: {e}")
+        return {}
+    return content
 
 ########################   Here starts the historical db update   ######################
 

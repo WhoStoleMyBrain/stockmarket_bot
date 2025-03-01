@@ -1,8 +1,8 @@
 from enum import Enum
 
 class Side(Enum):
-    BUY = 1
-    SELL = 0
+    BUY = "BUY"
+    SELL = "SELL"
 
 class Method(Enum):
     POST = "POST"
@@ -47,3 +47,11 @@ class Actions(Enum):
     
 class ExportFolder(Enum):
     EXPORT_FOLDER = "crypto_data_export"
+    
+class ApiPath(Enum):
+    ORDERS_PREVIEW = "/api/v3/brokerage/orders/preview"
+    ORDERS = "/api/v3/brokerage/orders"
+    PRODUCTS = "/api/v3/brokerage/products"
+    ACCOUNTS = "/api/v3/brokerage/accounts"
+    BEST_BID_ASKS = "/api/v3/brokerage/best_bid_ask"
+    
