@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 
 from stable_baselines3 import PPO
 
@@ -10,21 +11,6 @@ from coinbase_api.models.models import AbstractOHLCV
 from coinbase_api.models.singleton_meta import SingletonMeta
 
 class RlProvider(metaclass=SingletonMeta):
-    # """
-    # Singleton class for Coinbase data handling.
-    # """
-    # _instance = None
-    
-    # def __new__(cls):
-    #     """
-    #     Override the __new__ method to control the object creation process.
-    #     :return: A single instance of CBAuth
-    #     """
-    #     if cls._instance is None:
-    #         print("Creating CBProvider instance")
-    #         cls._instance = super(RlProvider, cls).__new__(cls)
-    #         cls._instance.init()
-    #     return cls._instance
 
     def __init__(self):
         """
@@ -41,7 +27,12 @@ class RlProvider(metaclass=SingletonMeta):
             crypto.symbol: RealDataHandler(crypto) for crypto in crypto_models
         }
         self.crypto_models = {}
-        model_path = 'coinbase_api/ml_models/rl_model.pkl'
+        if sys.platform.startswith('linux'):
+            print(f"running on os: {sys.platform}")
+            model_path = '/app/coinbase_api/ml_models/rl_model.pkl'
+        else:
+            print(f"running on os: {sys.platform}")
+            model_path = 'coinbase_api/ml_models/rl_model.pkl'
         for crypto_symbol in self.crypto_environments:
             if os.path.exists(model_path):
                 # Load the existing model

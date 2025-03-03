@@ -11,6 +11,7 @@ class Order:
         #! next two are just for sanity check
         self.completion_percentage = order["completion_percentage"]
         self.leaves_quantity = order["leaves_quantity"]
+        self.outstanding_hold_amount = order["outstanding_hold_amount"]
         
     def is_finished_buy_order(self) -> bool:
         # take each condition step by step
@@ -20,7 +21,9 @@ class Order:
                 print("status is FILLED... check!")
                 if float(self.completion_percentage) >= 100:
                     print("completion_percentage is 100... check!")
-                    if float(self.leaves_quantity) >= 0:
+                    if float(self.leaves_quantity) == 0:
                         print("leaves_quantity is 0... check!")
-                        return True
+                        if float(self.outstanding_hold_amount) == 0:
+                            print("outstanding_hold_amount is 0... check!")
+                            return True
         return False

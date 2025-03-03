@@ -16,42 +16,60 @@ services:
   #     # - redis
   #     - db
   #     - historical_db
-  # redis:
-  #   image: redis
-  #   ports:
-  #     - 6379:6379
-  # redis-commander:
-  #   image: rediscommander/redis-commander:latest
-  #   environment:
-  #     - REDIS_HOSTS=local:redis:6379
-  #   ports:
-  #     - "8081:8081"
-  #   container_name: redis
-  #   depends_on:
-  #     - redis
-  # celery:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile
-  #   command: celery -A stockmarket_bot worker -l info --uid nobody
-  #   volumes:
-  #     - .:/app
-  #   depends_on:
-  #     - redis
-  #     - db
-  #     - web
-  # celery-beat:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile
-  #   command: celery -A stockmarket_bot beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
-  #   volumes:
-  #     - .:/app
-  #   container_name: celery_beat
-  #   depends_on:
-  #     - redis
-  #     - db
-  #     - web
+  redis:
+    image: redis
+    ports:
+      - 6379:6379
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    ports:
+      - "8081:8081"
+    container_name: redis
+    depends_on:
+      - redis
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: celery -A stockmarket_bot worker -l info --uid nobody
+    volumes:
+      - .:/app
+    links:
+    - redis
+    container_name: celery_worker
+    depends_on:
+      - redis
+      - db
+      # - web
+  celery-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: celery -A stockmarket_bot beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    volumes:
+      - .:/app
+    container_name: celery_beat
+    links:
+    - celery-worker
+    - redis
+    depends_on:
+      - redis
+      - db
+      # - web
+  ws_client:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python manage.py run_ws_client
+    volumes:
+      - .:/app
+    container_name: ws_client
+    depends_on:
+      - redis
+      - db
+      # - web
   db:
     image: postgres:13
     environment:

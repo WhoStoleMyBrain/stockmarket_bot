@@ -16,21 +16,6 @@ from coinbase_api.utilities.cb_provider import CbProvider
 cb_provider = CbProvider()
 
 class RlActionHandler(metaclass=SingletonMeta):
-    # """
-    # Singleton class for Coinbase data handling.
-    # """
-    # _instance = None
-    
-    # def __new__(cls):
-    #     """
-    #     Override the __new__ method to control the object creation process.
-    #     :return: A single instance of CBAuth
-    #     """
-    #     if cls._instance is None:
-    #         print("Creating CBProvider instance")
-    #         cls._instance = super(RlActionHandler, cls).__new__(cls)
-    #         cls._instance.init()
-    #     return cls._instance
 
     def __init__(self):
         """
@@ -42,8 +27,8 @@ class RlActionHandler(metaclass=SingletonMeta):
             format='%(asctime)s %(levelname)s:%(message)s',
             filemode='a'
         )
-        self.product_data = {}
         self.logger = logging.getLogger(__name__)
+        self.product_data = {}
         self.product_data = self.load_product_data()
         
     def handle_actions(self, action: dict[AbstractOHLCV, float]):
@@ -52,15 +37,16 @@ class RlActionHandler(metaclass=SingletonMeta):
         keys_to_perform_action:list[AbstractOHLCV] = list(sorted_actions.keys())[-3:]
         self.wallets_dict = cb_provider.get_wallets()
         current_liquidity = cb_provider.get_liquidity()
+        current_liquidity = 100.0 #! just for testing
         if (current_liquidity < 5.0):
             self.logger.info(f"Current liquidity is below 5$. Not performing any actions!")
             return
         for key in keys_to_perform_action:
             quote_size = min(100, float(current_liquidity)/3.0)
             print(f'act: {sorted_actions[key]} on crypto {key.symbol}')
-            _, quote_increment, price_increment = self.get_increments()
+            _, quote_increment, price_increment = self.get_increments(key)
             best_bid = self.get_crypto_data_price(key)
-            end_time = datetime.now(timezone.utc) + timedelta(minutes=15) #! valid for 15 minutes only
+            end_time = datetime.now(timezone.utc) + timedelta(minutes=15)
             payload = {
                 # "client_order_id": str(uuid.uuid4()),
                 "product_id": f"{key.symbol}-USDC",
@@ -75,7 +61,6 @@ class RlActionHandler(metaclass=SingletonMeta):
             }
             result = self.place_buy_order(payload=payload)
             print(f'preview: {result}')
-            break
         
     def get_crypto_data_price(self, crypto: AbstractOHLCV):
         raw_data = api_request_with_auth(
@@ -87,10 +72,14 @@ class RlActionHandler(metaclass=SingletonMeta):
             )
         pricebooks = raw_data["pricebooks"]
         try:
-            best_bid = float(pricebooks["bids"])
+            bids_crypto = [pricebook for pricebook in pricebooks if pricebook["product_id"] == f"{crypto.symbol}-USDC"][0]
+            print(f"bids_crypto: {bids_crypto}")
+            best_bid = float(bids_crypto["bids"][0]["price"])
+            print(f"best_bid: {best_bid}")
+            return best_bid
         except Exception as e:
             print(f'Encountered the following error: {e}')
-        return best_bid 
+            raise e
         
     def place_buy_order(self, payload = {}):
         response_decoded = api_request_with_auth(ApiPath.ORDERS_PREVIEW.value, Method.POST, request_body = payload)

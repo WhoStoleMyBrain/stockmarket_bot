@@ -15,21 +15,6 @@ from coinbase_api.utilities.utils import api_request_with_auth
 
 
 class CbProvider(metaclass=SingletonMeta):
-    # """
-    # Singleton class for Coinbase data handling.
-    # """
-    # _instance = None
-    
-    # def __new__(cls):
-    #     """
-    #     Override the __new__ method to control the object creation process.
-    #     :return: A single instance of CBAuth
-    #     """
-    #     if cls._instance is None:
-    #         print("Creating CBProvider instance")
-    #         cls._instance = super(CbProvider, cls).__new__(cls)
-    #         cls._instance.init()
-    #     return cls._instance
 
     def __init__(self):
         """

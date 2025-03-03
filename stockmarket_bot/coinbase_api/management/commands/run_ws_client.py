@@ -67,7 +67,7 @@ def place_sell_order(buy_order: Order):
             }
         }
     }
-    response_decoded = api_request_with_auth(ApiPath.ORDERS_PREVIEW.value, Method.POST, request_body = payload)
+    response_decoded = api_request_with_auth(ApiPath.ORDERS.value, Method.POST, request_body = payload)
     print(f"response_decoded:\n{response_decoded}")
 
 if not SECOND_API_SECRET or not SECOND_API_KEY:

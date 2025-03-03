@@ -2,8 +2,8 @@
     {
         "channel": "user",
         "client_id": "",
-        "timestamp": "2025-02-16T08:28:45.766609571Z",
-        "sequence_num": 4,
+        "timestamp": "2025-02-16T08:28:45.766680579Z",
+        "sequence_num": 5,
         "events": [
             {
                 "type": "update",
@@ -22,7 +22,7 @@
                         "order_id": "7aafde8c-7cf4-4939-aff2-3fc5f42f4863",
                         "order_side": "SELL",
                         "order_type": "Limit",
-                        "outstanding_hold_amount": "0.746",
+                        "outstanding_hold_amount": "0",
                         "post_only": "false",
                         "product_id": "NEAR-USDC",
                         "product_type": "SPOT",

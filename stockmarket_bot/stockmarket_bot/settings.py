@@ -25,9 +25,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-@cd%l)0lxo7fo&!hi_jcd@e%2(i!#(q0@x4s^(br0**h6uv%t1'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    'localhost',
+    '127.0.0.1'
+]
 
 
 # Application definition
@@ -42,8 +45,8 @@ INSTALLED_APPS = [
     'django_celery_beat',
     'rest_framework',
     'django_filters',
-    'celery_app',
     'coinbase_api',
+    'celery_app',
 ]
 
 MIDDLEWARE = [
@@ -86,8 +89,8 @@ DATABASES = {
         'NAME': 'mydatabase',
         'USER': 'myuser',
         'PASSWORD': 'mypassword',
-        'HOST': 'localhost',  # Use the service name from docker-compose.yml
-        # 'HOST': 'db',  # Use the service name from docker-compose.yml
+        # 'HOST': 'localhost',  # Use the service name from docker-compose.yml
+        'HOST': 'db',  # Use the service name from docker-compose.yml
         'PORT': '5432',
     },
     Database.SIMULATION.value: {
@@ -95,8 +98,8 @@ DATABASES = {
         'NAME': 'simulation',
         'USER': 'myuser',
         'PASSWORD': 'mypassword',
-        'HOST': 'localhost',  # Use the service name from docker-compose.yml
-        # 'HOST': 'db',  # Use the service name from docker-compose.yml
+        # 'HOST': 'localhost',  # Use the service name from docker-compose.yml
+        'HOST': 'db',  # Use the service name from docker-compose.yml
         'PORT': '5432',
     },
     Database.HISTORICAL.value: {
@@ -104,8 +107,8 @@ DATABASES = {
         'NAME': 'historical_database',
         'USER': 'myuser',
         'PASSWORD': 'mypassword',
-        'HOST': 'localhost',  # Use the service name from docker-compose.yml
-        # 'HOST': 'historical_db',  # Use the service name from docker-compose.yml
+        # 'HOST': 'localhost',  # Use the service name from docker-compose.yml
+        'HOST': 'historical_db',  # Use the service name from docker-compose.yml
         'PORT': '5433',  # This should match the exposed port in docker-compose.yml
     },
 }
@@ -157,8 +160,13 @@ CELERY_RESULT_BACKEND = 'redis://redis:6379/0'
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 
 CELERY_BEAT_SCHEDULE = {
-    'update-ohlcv-every-hour': {
-        'task': 'coinbase_api.tasks.update_ohlcv_data',
-        'schedule': crontab(minute=0),
+    # 'update-ohlcv-every-hour': {
+    #     'task': 'coinbase_api.tasks.update_ohlcv_data',
+    #     'schedule': crontab(minute=0),
+    # },
+    'trading-bot': {
+        'task': 'celery_app.tasks.run_trading_bot',
+        'schedule': crontab(minute="*/5"),
     },
+    
 }
