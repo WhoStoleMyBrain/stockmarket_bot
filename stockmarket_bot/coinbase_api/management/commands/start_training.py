@@ -1,6 +1,7 @@
 from django.core.management.base import BaseCommand, CommandError
 import os
 from stable_baselines3 import PPO
+from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.callbacks import CheckpointCallback
 from coinbase_api.ml_models.RL_decider_model import CustomEnv
 import traceback
@@ -70,6 +71,7 @@ class Command(BaseCommand):
         #! Disabling GPU 
         torch.cuda.is_available = lambda : False
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        print(f"using device: {device}")
         config_path = kwargs.get('config', CONFIG_FILE_PATH)
         continue_training = kwargs.get('continue_training', None)
 
@@ -102,6 +104,8 @@ class Command(BaseCommand):
             "pi": [512, 256, 128],  # Default values if not provided
             "vf": [512, 256, 128]
         })
+        lstm_hidden_size = policy_parameters.get('lstm_hidden_size', 128)
+        lstm_num_layers = policy_parameters.get('lstm_num_layers', 128)
         current_stage = config.get('current_stage', 0)
 
         for phase_index, phase in enumerate(phases):
@@ -148,6 +152,8 @@ class Command(BaseCommand):
                 print(f"noise_level: {noise_level}")
                 print(f"slippage level: {slippage_level}")
                 print(f"net_arch: {net_arch}")
+                print(f"lstm_hidden_size: {lstm_hidden_size}")
+                print(f"lstm_num_layers: {lstm_num_layers}")
 
                 print(f'Starting training with interval: {interval}')
                 
@@ -162,14 +168,19 @@ class Command(BaseCommand):
                         print('Loaded model!')
                         env = CustomEnv(data_handler=SimulationDataHandler(BTC ,total_steps=interval, **items_for_datahandler))
                         self.env = env
-                        self.model = PPO.load(model_path, env=env)
+                        self.model = RecurrentPPO.load(model_path, env=env)
                         self.model.tensorboard_log = log_dir
                     else:
                         env = CustomEnv(data_handler=SimulationDataHandler(BTC, total_steps=interval, **items_for_datahandler))
                         self.env = env
-                        self.model = PPO(
-                            CustomPolicy,
-                            policy_kwargs={"net_arch": net_arch},
+                        self.model = RecurrentPPO(
+                            "MlpLstmPolicy",
+                            # CustomPolicy,
+                            policy_kwargs={
+                                "net_arch": net_arch,
+                                "lstm_hidden_size": lstm_hidden_size,
+                                "n_lstm_layers": lstm_num_layers
+                            },
                             env=env,
                             verbose=0,
                             tensorboard_log=log_dir,
@@ -194,18 +205,19 @@ class Command(BaseCommand):
                     self.model._setup_model()
 
                 try:
-                    for crypto_model in crypto_models:
-                        self.env.set_currency(crypto_model)
-                        self.model.set_env(self.env)
-                        self.model.learn(
-                            total_timesteps=interval,
-                            progress_bar=True,
-                            reset_num_timesteps=False,
-                            tb_log_name=f"ModelV2_{interval}_{interval_transaction_costs}",
-                            log_interval=1,
-                            callback=[checkpoint_callback]
-                            # callback=[RLModelLoggingCallback(), checkpoint_callback]
-                        )
+                    # for crypto_model in crypto_models:
+                    #     self.env.set_currency(crypto_model)
+                    #     self.model.set_env(self.env)
+                    #! disabled to test if system learns on single currency
+                    self.model.learn(
+                        total_timesteps=interval,
+                        progress_bar=True,
+                        reset_num_timesteps=False,
+                        tb_log_name=f"ModelV2_{interval}_{interval_transaction_costs}",
+                        log_interval=1,
+                        callback=[checkpoint_callback]
+                        # callback=[RLModelLoggingCallback(), checkpoint_callback]
+                    )
                     self.model.save(model_path)
                     phase_timesteps -= interval
                     phase['phase_timesteps'] = phase_timesteps

@@ -1,5 +1,5 @@
 {
-    "total_timesteps": 5e6,
+    "total_timesteps": 1e6,
     "phases": [
         {
             "percentage": 35,
@@ -7,10 +7,10 @@
             "interval_weights": [10, 8, 6],
             "interval_transaction_costs": 0.0,
             "initial_lr": 5e-4,
-            "final_lr": 1e-5,
+            "final_lr": 5e-5,
             "clip_range": 0.2,
             "batch_size": 64,
-            "n_epochs": 6,
+            "n_epochs": 10,
             "reward_function_index": 0,
             "noise_level": 0.00,
             "slippage_level": 0.1
@@ -21,10 +21,10 @@
             "interval_weights": [30, 20, 6, 4, 2],
             "interval_transaction_costs": 0.25,
             "initial_lr": 3e-4,
-            "final_lr": 1e-5,
+            "final_lr": 4e-5,
             "clip_range": 0.2,
             "batch_size": 64,
-            "n_epochs": 6,
+            "n_epochs": 10,
             "reward_function_index": 0,
             "noise_level": 0.00,
             "slippage_level": 0.1
@@ -35,10 +35,10 @@
             "interval_weights": [6, 4, 2, 2, 1],
             "interval_transaction_costs": 0.5,
             "initial_lr": 3e-4,
-            "final_lr": 1e-5,
+            "final_lr": 2e-5,
             "clip_range": 0.2,
             "batch_size": 64,
-            "n_epochs": 5,
+            "n_epochs": 10,
             "reward_function_index": 1,
             "noise_level": 0.00,
             "slippage_level": 0.1
@@ -52,7 +52,7 @@
             "final_lr": 1e-5,
             "clip_range": 0.2,
             "batch_size": 64,
-            "n_epochs": 5,
+            "n_epochs": 10,
             "reward_function_index": 1,
             "noise_level": 0.00,
             "slippage_level": 0.1
@@ -66,7 +66,7 @@
             "final_lr": 1e-5,
             "clip_range": 0.2,
             "batch_size": 64,
-            "n_epochs": 4,
+            "n_epochs": 10,
             "reward_function_index": 2,
             "noise_level": 0.00,
             "slippage_level": 0.2
@@ -74,10 +74,12 @@
     ],
     "policy_parameters": {
         "net_arch": {
-            "shared": [128],
-            "pi": [64],
-            "vf": [64]
-        }
+            "shared": [256, 128],
+            "pi": [128, 64],
+            "vf": [128, 64]
+        },
+        "lstm_hidden_size": 128,
+        "lstm_num_layers": 1
     },
     "model_path": "coinbase_api/ml_models/rl_model.pkl",
     "log_dir": "/logs"

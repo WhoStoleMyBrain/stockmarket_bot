@@ -253,18 +253,6 @@ class SimulationDataHandler:
             print(f"Error retrieving maximum timestamp for {self.crypto.symbol}: {e}")
             return datetime(year=2025, month=1, day=9)
 
-
-    # def get_maximum_timestamp(self) -> datetime:
-    #     timestamp: datetime = None
-    #     try:
-    #         val = self.crypto.objects.using(Database.HISTORICAL.value).values_list("timestamp").order_by("-timestamp").first()
-    #         timestamp = val[0] if val is not None else datetime(year=2025, month=1, day=9)
-    #     except self.crypto.DoesNotExist:
-    #         print(f'did not exist: {self.crypto.symbol}')
-    #     except AttributeError as e:
-    #         print(f'attribute error: {self.crypto.symbol}: {e}')
-    #     return timestamp if timestamp is not None else datetime(year=2025, month=1, day=9)
-
     def get_starting_timestamp(self) -> datetime:
         if self.initial_timestamp is None:
             hours = self.maximum_timestamp - self.earliest_timestamp
@@ -276,13 +264,24 @@ class SimulationDataHandler:
         return self.initial_timestamp
 
     def get_current_state(self) -> npt.NDArray[np.float16]:
-        # prices = np.array([self.get_crypto_value_from_cache(symbol, self.timestamp) for symbol in self.account_holdings.keys()])
         crypto_price = self.get_crypto_value_from_cache(self.crypto.symbol, self.timestamp)
         holdings = np.array(list(self.account_holdings.values()))
+        # bracketSellHoldings = sum([bracketSellItem.cryptoAmount * bracketSellItem.cryptoValue for bracketSellItem in self.bracketSells])
         self.total_volume = np.sum(holdings * crypto_price) + self.usdc_held
+        # self.total_volume = np.sum(holdings * crypto_price) + self.usdc_held + bracketSellHoldings
         
         if self.step_count >= self.total_steps - 1 and self.total_volume != 0.0:
-            self.logger.info(f"finished training with: {self.total_volume:.2f}$. Holding actions: {sum(self.holding_actions)} / {len(self.holding_actions)}. profitable trades: {self.winning_trades}. losing trades: {self.losing_trades}")
+            expected_total_gain = 1.03**self.winning_trades * 0.99**self.losing_trades * 1000.0
+            total_actions = self.winning_trades + self.losing_trades
+            if total_actions != 0:
+                winning_trade_percentage = self.winning_trades / total_actions
+                losing_trade_percentage = self.losing_trades / total_actions
+            else:
+                winning_trade_percentage = 0
+                losing_trade_percentage = 0
+            total_days = len(self.holding_actions) / 288.0 # 1440/5 = 288
+            actions_per_day = total_actions / float(total_days)
+            self.logger.info(f"fin w/: {self.total_volume:.2f}$. est: {expected_total_gain:.2f}$. Hodl: {sum(self.holding_actions)} / {len(self.holding_actions)}. win: {self.winning_trades}({winning_trade_percentage*100:.1f}%). lose: {self.losing_trades}({losing_trade_percentage*100:.1f}%). Act/d: {actions_per_day:.2f}. timerange: {self.initial_timestamp} - {self.timestamp}")
         new_crypto_data = self.get_new_crypto_data()
         state = np.concatenate((np.array([self.total_volume, self.usdc_held]),
                                 holdings, new_crypto_data))
@@ -318,18 +317,19 @@ class SimulationDataHandler:
         crypto_value = self.get_crypto_value_from_cache(self.crypto.symbol, self.timestamp)
         if not crypto_value:
             self.logger.warning(f"No crypto value found for {self.timestamp}")
-            # self.get_current_state()
             return self.state, 0.0, False, {}
         self.costs_for_action = self.cost_for_action(action)  # Exclude the first action for costs calculation. first action is usdc hold action
         is_buy = (action[0] > self.action_factor) and (self.usdc_held > 5) #! only buy with 5 or more usdc
         hold = not is_buy
         self.holding_actions.append(hold)
         available_liquidity = self.usdc_held - self.costs_for_action
-        if is_buy and not self.apply_latency():
-            mapped_buy = max((action[0] - self.action_factor) / (1 - self.action_factor), 0)
-            # buy_amount = available_liquidity * mapped_buy
-            buy_amount = self.apply_slippage_to_value(available_liquidity, -1) * mapped_buy
-            coins = buy_amount / crypto_value
+        # if is_buy and not self.apply_latency():
+        if is_buy:
+            mapped_buy = 1.0 # know it is buy action -> buy as much as possible
+            # mapped_buy = max((action[0] - self.action_factor) / (1 - self.action_factor), 0)
+            buy_amount = available_liquidity * mapped_buy
+            # buy_amount = self.apply_slippage_to_value(available_liquidity, -self.slippage_level) * mapped_buy
+            coins = buy_amount / float(crypto_value)
             self.account_holdings[self.crypto.symbol] += max(coins, 0)
             self.usdc_held = max(self.usdc_held - buy_amount - self.costs_for_action, 0)
             self.bracketSells.append(BracketSellItem(self.crypto, coins, crypto_value))
@@ -350,9 +350,15 @@ class SimulationDataHandler:
         for i in brackets_to_sell:
             sell_amount = self.bracketSells[i].cryptoAmount
             # total_sell_value = sell_amount * crypto_value
-            total_sell_value = self.apply_slippage_to_value(sell_amount, -1) * crypto_value
+            if (self.bracketSells[i].isWinningTrade(crypto_value)):
+                # total_sell_value = self.apply_slippage_to_value(sell_amount, -self.slippage_level) * self.bracketSells[i].cryptoValue * self.bracketSells[i].bracketUp #sell for 3% profit
+                total_sell_value = sell_amount * self.bracketSells[i].cryptoValue * self.bracketSells[i].bracketUp #sell for 3% profit
+            else:
+                total_sell_value = sell_amount * self.bracketSells[i].cryptoValue * self.bracketSells[i].bracketDown #sell for 1% loss
+                # total_sell_value = self.apply_slippage_to_value(sell_amount, -self.slippage_level) * self.bracketSells[i].cryptoValue * self.bracketSells[i].bracketDown #sell for 1% loss
             self.usdc_held = max(self.usdc_held + total_sell_value - self.get_sell_fees(total_sell_value), 0)
-            self.account_holdings[self.crypto.symbol] = max(self.account_holdings[self.crypto.symbol] - sell_amount, 0)
+            self.account_holdings[self.crypto.symbol] = 0 # by definition will be all
+            # self.account_holdings[self.crypto.symbol] = max(self.account_holdings[self.crypto.symbol] - sell_amount, 0)
             if (total_sell_value > sell_amount * self.bracketSells[i].cryptoValue):
                 self.winning_trades += 1
             else:
@@ -424,13 +430,14 @@ class SimulationDataHandler:
     def cost_for_action(self, action: List[float]) -> float:
         #! currently have only 1 action, which can only be buy!
         action_array = np.array(action)
-        buy_mask = action_array >= self.action_factor
+        # buy_mask = action_array >= self.action_factor
 
         mapped_buy_actions = np.maximum(self.map_buy_action_array(action_array, self.action_factor), 0)
-        total_buy_action = np.sum(mapped_buy_actions)
+        total_buy_action = 1 if np.sum(mapped_buy_actions) != 0 else 0 #either buy all or not at all
+        # total_buy_action = np.sum(mapped_buy_actions)
 
-        total_buy = mapped_buy_actions[buy_mask].sum()
-        total_buy = total_buy if total_buy != 0 else 1.0
+        # total_buy = mapped_buy_actions[buy_mask].sum()
+        # total_buy = total_buy if total_buy != 0 else 1.0
         
         # Calculate transaction volumes
         transaction_volume = self.usdc_held * total_buy_action

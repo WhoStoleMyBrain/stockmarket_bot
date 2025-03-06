@@ -1,1 +1,1 @@
-python3.12.exe .\manage.py start_training --continue_training training_config_8_3
+python3.12.exe .\manage.py start_training --continue_training training_config_9_15_reboot
