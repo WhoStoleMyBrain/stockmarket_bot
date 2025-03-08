@@ -34,7 +34,7 @@ class SimulationDataHandler:
         self.slippage_level = slippage_level
         self.logger = logging.getLogger(__name__)
         self.reward_function_index = reward_function_index
-        reward_function_index_max = 2
+        reward_function_index_max = 4
         if (reward_function_index > reward_function_index_max):
             self.logger.critical(f"Reward function index {reward_function_index} is bigger than the maximum {reward_function_index_max}. using 0 instead!")
             self.reward_function_index = 0
@@ -467,12 +467,14 @@ class SimulationDataHandler:
             return self.reward_function_2(action)
         elif self.reward_function_index == 3:
             return self.reward_function_3(action)
+        elif self.reward_function_index == 4:
+            return self.reward_function_4(action)
         else:
             return 0.0
 
     def reward_function_0(self, action: Actions) -> float:
         net_return = (self.total_volume / self.initial_volume) - 1
-        reward = net_return * 1.0  # Scale the reward as needed
+        # reward = net_return * 1.0  # Scale the reward as needed
         asymmetry_factor = 1.0  # Adjust this factor to control asymmetry
 
         cumulative_reward = 0
@@ -549,4 +551,57 @@ class SimulationDataHandler:
         reward *= 5
         if reward > 0:
             reward *= asymmetry_factor
+        return reward
+    
+    def reward_function_4(self, action: Actions) -> float:
+        """
+        A custom reward function that rewards overall portfolio gain, encourages
+        meeting a dynamic profit target (which increases by 1% per day), and 
+        incentivizes both a high win/loss ratio and a baseline number of trades per day.
+        
+        Assumptions:
+        - self.total_volume is the current portfolio value.
+        - self.initial_volume is the starting portfolio value.
+        - self.winning_trades and self.losing_trades are cumulative counts.
+        - self.daily_trades is the number of trades executed on the current day.
+        - self.day_count is the current trading day (starting at 1).
+        """
+        # Part 1: Net return as baseline (e.g., 5% net return = 0.05)
+        net_return = (self.total_volume / self.initial_volume) - 1
+
+        # Part 2: Dynamic profit target.
+        # Increase the profit target by 1% per day after day 1.
+        trading_for_days = self.step_count / 288.0 # 288 steps are a full day for 5 min increments
+        day_multiplier = 1.005 ** trading_for_days
+        profit_threshold = day_multiplier * self.initial_volume  # e.g., on day 2, target is 1%, on day 3, target is 2%, etc.
+        # Reward (or penalize) based on how much net_return exceeds (or falls short of) the target.
+        dynamic_profit_bonus = net_return / profit_threshold - 1
+
+        # Part 3: Trade quality bonus: higher win ratio is better.
+        total_trades = self.winning_trades + self.losing_trades
+        if total_trades > 5:
+            # If win rate is above 50%, bonus is positive; below 50% a penalty.
+            trade_quality_bonus = (self.winning_trades / total_trades) - 0.4 # 40% winning trades is great
+        else:
+            trade_quality_bonus = 0.0
+
+        # Part 4: Trade frequency bonus:
+        # We require a baseline of, say, 2 trades per day.
+        baseline_trades = 2.0
+        # self.daily_trades should be updated externally each day.
+        if trading_for_days > 1:
+            current_daily_trades = total_trades / trading_for_days
+            trade_frequency_bonus = (current_daily_trades - baseline_trades) / baseline_trades
+        else:
+            current_daily_trades = 0
+            trade_frequency_bonus = 0
+
+        # Combine all parts with weights that you can tune:
+        reward = (0.25 * net_return +      # overall portfolio gain matters, but moderate weight
+                0.5 * dynamic_profit_bonus +  # encourages beating the moving profit target
+                1.0 * trade_quality_bonus +   # incentivizes a high win rate
+                0.2 * trade_frequency_bonus)  # encourages at least a minimum number of trades
+
+        # Optionally, scale the reward:
+        reward *= 5.0
         return reward

@@ -215,8 +215,8 @@ class Command(BaseCommand):
                         reset_num_timesteps=False,
                         tb_log_name=f"ModelV2_{interval}_{interval_transaction_costs}",
                         log_interval=1,
-                        callback=[checkpoint_callback]
-                        # callback=[RLModelLoggingCallback(), checkpoint_callback]
+                        # callback=[checkpoint_callback]
+                        callback=[RLModelLoggingCallback(), checkpoint_callback]
                     )
                     self.model.save(model_path)
                     phase_timesteps -= interval
