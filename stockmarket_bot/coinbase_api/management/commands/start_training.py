@@ -16,7 +16,7 @@ import torch
 
 CONFIG_FILE_PATH = 'coinbase_api/ml_models/training_configs/training_config_1.json'
 ACTIVE_TRAININGS_PATH = 'coinbase_api/ml_models/active_trainings'
-LOGS_BASE_DIR = '/logs'
+LOGS_BASE_DIR = './tensorboard_logs'
 
 class LinearSchedule:
     def __init__(self, initial_lr, final_lr, duration):
@@ -105,13 +105,12 @@ class Command(BaseCommand):
             "vf": [512, 256, 128]
         })
         lstm_hidden_size = policy_parameters.get('lstm_hidden_size', 128)
-        lstm_num_layers = policy_parameters.get('lstm_num_layers', 128)
+        lstm_num_layers = policy_parameters.get('lstm_num_layers', 1)
         current_stage = config.get('current_stage', 0)
-
+        persistent_rl_logging_callback = RLModelLoggingCallback(log_interval=25, verbose=True)
         for phase_index, phase in enumerate(phases):
             if phase_index < current_stage:
                 continue
-
             phase_timesteps = phase.get('phase_timesteps', int(phase['percentage'] * total_timesteps / 100))
             intervals = phase['intervals']
             interval_weights = phase['interval_weights']
@@ -124,6 +123,7 @@ class Command(BaseCommand):
             reward_function_index = phase.get('reward_function_index', 0)
             noise_level = phase.get('noise_level', 0.00)
             slippage_level = phase.get('slippage_level', 0.00)
+            dynamic_reward_exponent = phase.get('dynamic_reward_exponent', 1.00)
             checkpoint_callback = CheckpointCallback(save_freq=100000, save_path=f"{active_training_path}_checkpoint", name_prefix='rl_model_checkpoint')
 
             interval_list = [interval for interval, weight in zip(intervals, interval_weights) for _ in range(weight)]
@@ -151,6 +151,7 @@ class Command(BaseCommand):
                 print(f"reward function index: {reward_function_index}")
                 print(f"noise_level: {noise_level}")
                 print(f"slippage level: {slippage_level}")
+                print(f"dynamic_reward_exponent: {dynamic_reward_exponent}")
                 print(f"net_arch: {net_arch}")
                 print(f"lstm_hidden_size: {lstm_hidden_size}")
                 print(f"lstm_num_layers: {lstm_num_layers}")
@@ -161,7 +162,8 @@ class Command(BaseCommand):
                     'transaction_cost_factor':interval_transaction_costs,
                     'reward_function_index':reward_function_index,
                     'noise_level':noise_level,
-                    'slippage_level':slippage_level
+                    'slippage_level':slippage_level,
+                    "dynamic_reward_exponent": dynamic_reward_exponent
                 }
                 if self.model is None or self.model.n_steps != interval:
                     if os.path.exists(model_path):
@@ -209,15 +211,18 @@ class Command(BaseCommand):
                     #     self.env.set_currency(crypto_model)
                     #     self.model.set_env(self.env)
                     #! disabled to test if system learns on single currency
+                    persistent_rl_logging_callback.set_phase(f"{phase_index}_{interval_index}_{interval}")
                     self.model.learn(
                         total_timesteps=interval,
                         progress_bar=True,
                         reset_num_timesteps=False,
-                        tb_log_name=f"ModelV2_{interval}_{interval_transaction_costs}",
+                        tb_log_name=continue_training if continue_training else training_name,
                         log_interval=1,
                         # callback=[checkpoint_callback]
-                        callback=[RLModelLoggingCallback(), checkpoint_callback]
+                        # callback=[RLModelLoggingCallback(log_interval=100), checkpoint_callback]
+                        callback=[persistent_rl_logging_callback, checkpoint_callback]
                     )
+                    persistent_rl_logging_callback.reset()
                     self.model.save(model_path)
                     phase_timesteps -= interval
                     phase['phase_timesteps'] = phase_timesteps

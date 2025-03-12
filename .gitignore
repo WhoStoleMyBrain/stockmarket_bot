@@ -139,7 +139,7 @@ GitHub.sublime-settings
 .history
 
 # Tensorboard Logs
-# **events.out.tfevents**
+**events.out.tfevents**
 
 # active trainings
 **/coinbase_api/ml_models/active_trainings/*

@@ -17,7 +17,7 @@ except ImportError:
     ds = None  # Fall back to in-memory filtering if PyArrow is not available
 
 class SimulationDataHandler:
-    def __init__(self, crypto: AbstractOHLCV, initial_volume=1000, total_steps=1024, transaction_cost_factor=1.0, reward_function_index=0, noise_level=0.01, slippage_level=0.00) -> None:
+    def __init__(self, crypto: AbstractOHLCV, initial_volume=1000, total_steps=1024, transaction_cost_factor=1.0, reward_function_index=0, noise_level=0.01, slippage_level=0.00, dynamic_reward_exponent = 1.005) -> None:
         logging.basicConfig(
             filename='/logs/sim_logs/simulation.log',
             level=logging.INFO,
@@ -32,6 +32,7 @@ class SimulationDataHandler:
         self.timing_count = 0
         self.noise_level = noise_level
         self.slippage_level = slippage_level
+        self.dynamic_reward_exponent = dynamic_reward_exponent
         self.logger = logging.getLogger(__name__)
         self.reward_function_index = reward_function_index
         reward_function_index_max = 4
@@ -47,8 +48,8 @@ class SimulationDataHandler:
         self.feature_indices = [i for i, feature in enumerate(['timestamp', 'close', 'volume', 'sma', 'ema', 'rsi', 'macd', 'bollinger_high', 'bollinger_low', 'vmap', 'percentage_returns', 'log_returns']) if feature in crypto_features]
         self.usdc_held = initial_volume  # Initialize USDC account in memory
         self.minimum_number_of_cryptos = 1 #? set to 1 because we will start handling data in sequence instead of parallel
-        self.maker_fee = 0.0025  # 0.25% based on Advanced 1, might drop
-        self.taker_fee = 0.004  # 0.4% based on Advanced 1, might drop
+        self.maker_fee = 0.001  # 0.25% based on Advanced 2, might drop including rebate
+        self.taker_fee = 0.0015  # 0.4% based on Advanced 2, might drop including rebate
         self.initial_volume: float = initial_volume
         self.total_volume = initial_volume
         self.account_holdings = {self.crypto.symbol: 0.0}
@@ -392,10 +393,10 @@ class SimulationDataHandler:
                 if sum(self.holding_actions) != 0 and len(self.holding_actions) > 0:
                     self.logger.info(f"Resetting training with: {self.total_volume:.2f}$. Holding actions: {sum(self.holding_actions)} / {len(self.holding_actions)}")
         self.step_count = 0
-        self.action_factor = 0.2
+        self.action_factor = 0.5
         self.initial_timestamp = None
-        self.maker_fee = 0.0025  # 0.25% based on Advanced 1, might drop
-        self.taker_fee = 0.004  # 0.4% based on Advanced 1, might drop
+        self.maker_fee = 0.001  # 0.25% based on Advanced 2, might drop including rebate
+        self.taker_fee = 0.0015  # 0.4% based on Advanced 2, might drop including rebate
         self.initial_volume = self.initial_volume
         self.total_volume = self.initial_volume
         self.usdc_held = self.initial_volume  # Initialize USDC in memory
@@ -572,7 +573,7 @@ class SimulationDataHandler:
         # Part 2: Dynamic profit target.
         # Increase the profit target by 1% per day after day 1.
         trading_for_days = self.step_count / 288.0 # 288 steps are a full day for 5 min increments
-        day_multiplier = 1.005 ** trading_for_days
+        day_multiplier = self.dynamic_reward_exponent ** trading_for_days
         profit_threshold = day_multiplier * self.initial_volume  # e.g., on day 2, target is 1%, on day 3, target is 2%, etc.
         # Reward (or penalize) based on how much net_return exceeds (or falls short of) the target.
         dynamic_profit_bonus = net_return / profit_threshold - 1
@@ -581,7 +582,7 @@ class SimulationDataHandler:
         total_trades = self.winning_trades + self.losing_trades
         if total_trades > 5:
             # If win rate is above 50%, bonus is positive; below 50% a penalty.
-            trade_quality_bonus = (self.winning_trades / total_trades) - 0.4 # 40% winning trades is great
+            trade_quality_bonus = (self.winning_trades / float(total_trades)) - 0.4 # 40% winning trades is great
         else:
             trade_quality_bonus = 0.0
 
@@ -599,7 +600,7 @@ class SimulationDataHandler:
         # Combine all parts with weights that you can tune:
         reward = (0.25 * net_return +      # overall portfolio gain matters, but moderate weight
                 0.5 * dynamic_profit_bonus +  # encourages beating the moving profit target
-                1.0 * trade_quality_bonus +   # incentivizes a high win rate
+                2.0 * trade_quality_bonus +   # incentivizes a high win rate
                 0.2 * trade_frequency_bonus)  # encourages at least a minimum number of trades
 
         # Optionally, scale the reward:

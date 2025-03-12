@@ -1,0 +1,1 @@
+tensorboard.exe --logdir=./tensorboard_logs

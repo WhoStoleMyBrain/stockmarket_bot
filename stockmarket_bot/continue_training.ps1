@@ -1,1 +1,1 @@
-python3.12.exe .\manage.py start_training --continue_training training_config_10_0
+python3.12.exe .\manage.py start_training --continue_training training_config_12_56

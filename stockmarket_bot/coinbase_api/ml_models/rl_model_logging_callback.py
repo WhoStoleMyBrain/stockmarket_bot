@@ -6,79 +6,64 @@ import threading
 
 class RLModelLoggingCallback(BaseCallback):
     def __init__(self, log_interval: int = 100, verbose: int = 0):
-        super(RLModelLoggingCallback, self).__init__(verbose)
+        super().__init__(verbose)
         self.log_interval = log_interval
         self.total_reward = 0
         self.step_count = 0
+        self.total_step_count = 0
         self.total_cost_for_action = 0
         self.writer = None
         self.log_queue = []
         self.lock = threading.Lock()
+        self.phase = "default"  # new attribute to mark the current phase
+
+    def set_phase(self, phase_str: str):
+        """Set the current training phase marker."""
+        self.phase = phase_str
 
     def _on_training_start(self) -> None:
+        if self.total_reward is None:
+            self.total_reward = 0
+        if self.step_count is None:
+            self.step_count = 0
+        if self.total_step_count is None:
+            self.total_step_count = 0
+        if self.total_cost_for_action is None:
+            self.total_cost_for_action = 0
         output_formats = self.logger.output_formats
         self.tb_formatter = next(formatter for formatter in output_formats if isinstance(formatter, TensorBoardOutputFormat))
 
+    def reset(self):
+        self.total_reward = 0
+        self.total_cost_for_action = 0
+        self.step_count = 0
+
     def _on_step(self) -> bool:
-        env = self.training_env.envs[0]
-        state = env.unwrapped.state
-        total_volume = state[0]
-        usdc = state[1]
-        reward = self.locals.get('rewards', [0])[0]
-        self.total_reward += reward
         self.step_count += 1
-        avg_reward = self.total_reward / self.step_count
-        self.total_cost_for_action += env.unwrapped.cost_for_action
-        timestamp = env.unwrapped.data_handler.timestamp
-        past_volumes = env.unwrapped.data_handler.past_volumes
-        ts_int = datetime.timestamp(timestamp)
-
-        log_data = {
-            'timestamp': timestamp,
-            'total_volume': total_volume,
-            'usdc': usdc,
-            'reward': reward,
-            'avg_reward': avg_reward,
-            'past_volumes': np.mean(past_volumes),
-            'total_cost_for_action': self.total_cost_for_action / self.step_count,
-            'ts_int': ts_int
-        }
-
-        with self.lock:
-            self.log_queue.append(log_data)
-
+        self.total_step_count += 1
         if self.step_count % self.log_interval == 0:
-            self._flush_logs()
-
-        return True
-
-    def _flush_logs(self):
-        with self.lock:
-            logs_to_write = self.log_queue
-            self.log_queue = []
-
-        for log_data in logs_to_write:
-            self.logger.record('env/timestamp', log_data['timestamp'])
-            self.logger.record('env/total_volume', log_data['total_volume'])
-            self.logger.record('env/usdc', log_data['usdc'])
-            self.logger.record('env/reward', log_data['reward'])
-            self.logger.record('env/average_reward', log_data['avg_reward'])
-            self.logger.record('env/past_volumes', log_data['past_volumes'])
-            self.logger.record('env/total_cost_for_action', log_data['total_cost_for_action'])
+            env = self.training_env.envs[0]
+            state = env.unwrapped.state
+            total_volume = state[0]
+            usdc = state[1]
+            reward = self.locals.get('rewards', [0])[0] #! ?? this one?
+            self.total_reward += reward
+            avg_reward = self.total_reward / self.step_count
+            self.total_cost_for_action += env.unwrapped.data_handler.costs_for_action
             
-            self.tb_formatter.writer.add_scalar("train/total_volume", log_data['total_volume'], log_data['ts_int'])
-            self.tb_formatter.writer.add_scalar('train/total_volume', log_data['total_volume'], log_data['ts_int'])
-            self.tb_formatter.writer.add_scalar('train/usdc', log_data['usdc'], log_data['ts_int'])
-            self.tb_formatter.writer.add_scalar('train/reward', log_data['reward'], log_data['ts_int'])
-            self.tb_formatter.writer.add_scalar('train/past_volumes', log_data['past_volumes'], log_data['ts_int'])
-            self.tb_formatter.writer.add_scalar('train/total_cost_for_action', log_data['total_cost_for_action'], log_data['ts_int'])
-            self.tb_formatter.writer.add_scalar('train/average_reward', log_data['avg_reward'], log_data['ts_int'])
-
-        self.tb_formatter.writer.flush()
-        self.logger.dump(self.num_timesteps)
-
-    def _on_training_end(self) -> None:
-        self._flush_logs()
-
-    def _on_rollout_end(self) -> None:
-        self._flush_logs()
+            # timestamp = env.unwrapped.data_handler.timestamp
+            # ts_int = datetime.timestamp(timestamp)
+            ls = self.step_count
+            gs = self.total_step_count
+            self.tb_formatter.writer.add_scalar(f"phase/{self.phase}/total_volume", total_volume, ls)
+            self.tb_formatter.writer.add_scalar(f"phase/{self.phase}/usdc", usdc, ls)
+            self.tb_formatter.writer.add_scalar(f"phase/{self.phase}/reward", reward, ls)
+            self.tb_formatter.writer.add_scalar(f"phase/{self.phase}/average_reward", avg_reward, ls)
+            self.tb_formatter.writer.add_scalar(f"phase/{self.phase}/total_cost_for_action", self.total_cost_for_action, ls)
+            # Also log overall metrics (phase-independent) for an aggregated view.
+            self.tb_formatter.writer.add_scalar("total/total_volume", total_volume, gs)
+            self.tb_formatter.writer.add_scalar("total/usdc", usdc, gs)
+            self.tb_formatter.writer.add_scalar("total/reward", reward, gs)
+            self.tb_formatter.writer.add_scalar("total/average_reward", avg_reward, gs)
+            self.tb_formatter.writer.add_scalar("total/total_cost_for_action", self.total_cost_for_action, gs)
+        return True

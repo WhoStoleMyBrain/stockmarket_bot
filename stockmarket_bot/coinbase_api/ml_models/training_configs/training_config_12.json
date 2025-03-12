@@ -6,17 +6,18 @@
             "intervals": [12800, 16640, 33280],
             "interval_weights": [10, 8, 6],
             "interval_transaction_costs": 0.0,
-            "initial_lr": 2e-4,
-            "final_lr": 2e-4,
+            "initial_lr": 3e-4,
+            "final_lr": 3e-4,
             "clip_range": 0.2,
             "batch_size": 64,
             "n_epochs": 10,
             "reward_function_index": 4,
             "noise_level": 0.00,
-            "slippage_level": 0.0
+            "slippage_level": 0.0,
+            "dynamic_reward_exponent": 1.005
         },
         {
-            "percentage": 25,
+            "percentage": 10,
             "intervals": [12800, 16640, 33280],
             "interval_weights": [10, 8, 6],
             "interval_transaction_costs": 0.0,
@@ -27,13 +28,14 @@
             "n_epochs": 10,
             "reward_function_index": 4,
             "noise_level": 0.00,
-            "slippage_level": 0.0
+            "slippage_level": 0.0,
+            "dynamic_reward_exponent": 1.006
         },
         {
-            "percentage": 20,
+            "percentage": 15,
             "intervals": [1920, 5760, 12800, 16640, 33280],
             "interval_weights": [30, 20, 6, 4, 2],
-            "interval_transaction_costs": 0.25,
+            "interval_transaction_costs": 0.3,
             "initial_lr": 3e-4,
             "final_lr": 4e-5,
             "clip_range": 0.2,
@@ -41,13 +43,14 @@
             "n_epochs": 10,
             "reward_function_index": 4,
             "noise_level": 0.00,
-            "slippage_level": 0.0
+            "slippage_level": 0.0,
+            "dynamic_reward_exponent": 1.007
         },
         {
-            "percentage": 15,
+            "percentage": 10,
             "intervals": [12800, 16640, 33280, 49920, 66560],
             "interval_weights": [6, 4, 2, 2, 1],
-            "interval_transaction_costs": 0.5,
+            "interval_transaction_costs": 0.7,
             "initial_lr": 3e-4,
             "final_lr": 2e-5,
             "clip_range": 0.2,
@@ -55,13 +58,14 @@
             "n_epochs": 10,
             "reward_function_index": 4,
             "noise_level": 0.00,
-            "slippage_level": 0.0
+            "slippage_level": 0.0,
+            "dynamic_reward_exponent": 1.009
         },
         {
-            "percentage": 15,
+            "percentage": 10,
             "intervals": [33280, 49920, 66560],
             "interval_weights": [4, 2, 1],
-            "interval_transaction_costs": 0.75,
+            "interval_transaction_costs": 1.0,
             "initial_lr": 2e-4,
             "final_lr": 1e-5,
             "clip_range": 0.2,
@@ -69,7 +73,53 @@
             "n_epochs": 10,
             "reward_function_index": 4,
             "noise_level": 0.00,
-            "slippage_level": 0.0
+            "slippage_level": 0.0,
+            "dynamic_reward_exponent": 1.011
+        },
+        {
+            "percentage": 10,
+            "intervals": [5760, 12800, 16640],
+            "interval_weights": [2, 2, 1],
+            "interval_transaction_costs": 1.25,
+            "initial_lr": 1e-4,
+            "final_lr": 1e-5,
+            "clip_range": 0.2,
+            "batch_size": 64,
+            "n_epochs": 10,
+            "reward_function_index": 4,
+            "noise_level": 0.00,
+            "slippage_level": 0.0,
+            "dynamic_reward_exponent": 1.014
+        },
+        {
+            "percentage": 10,
+            "intervals": [12800, 16640],
+            "interval_weights": [1, 1],
+            "interval_transaction_costs": 1.4,
+            "initial_lr": 1e-4,
+            "final_lr": 1e-5,
+            "clip_range": 0.2,
+            "batch_size": 64,
+            "n_epochs": 10,
+            "reward_function_index": 4,
+            "noise_level": 0.00,
+            "slippage_level": 0.0,
+            "dynamic_reward_exponent": 1.016
+        },
+        {
+            "percentage": 10,
+            "intervals": [16640, 33280, 49920],
+            "interval_weights": [1, 1, 1],
+            "interval_transaction_costs": 1.6,
+            "initial_lr": 1e-4,
+            "final_lr": 1e-5,
+            "clip_range": 0.2,
+            "batch_size": 64,
+            "n_epochs": 10,
+            "reward_function_index": 4,
+            "noise_level": 0.00,
+            "slippage_level": 0.0,
+            "dynamic_reward_exponent": 1.018
         },
         {
             "percentage": 15,
@@ -83,7 +133,8 @@
             "n_epochs": 10,
             "reward_function_index": 4,
             "noise_level": 0.00,
-            "slippage_level": 0.0
+            "slippage_level": 0.0,
+            "dynamic_reward_exponent": 1.02
         }
     ],
     "policy_parameters": {
