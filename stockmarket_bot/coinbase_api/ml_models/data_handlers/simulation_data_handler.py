@@ -1,4 +1,5 @@
 import os
+import time
 from typing import Any, Dict, List, Tuple
 import numpy as np
 import numpy.typing as npt
@@ -17,12 +18,13 @@ except ImportError:
     ds = None  # Fall back to in-memory filtering if PyArrow is not available
 
 class SimulationDataHandler:
-    def __init__(self, crypto: AbstractOHLCV, initial_volume=1000, total_steps=1024, transaction_cost_factor=1.0, reward_function_index=0, noise_level=0.01, slippage_level=0.00, dynamic_reward_exponent = 1.005) -> None:
+    def __init__(self, crypto: AbstractOHLCV, initial_volume=1000, model_name = "default_model_name", total_steps=1024, transaction_cost_factor=1.0, reward_function_index=0, noise_level=0.01, slippage_level=0.00, dynamic_reward_exponent = 1.005) -> None:
         logging.basicConfig(
             filename='/logs/sim_logs/simulation.log',
             level=logging.INFO,
             format='%(asctime)s %(levelname)s:%(message)s'
         )
+        self.model_name = model_name
         self.crypto = crypto
         self.timestamp_to_index = {}
         self.holding_actions = []
@@ -35,7 +37,7 @@ class SimulationDataHandler:
         self.dynamic_reward_exponent = dynamic_reward_exponent
         self.logger = logging.getLogger(__name__)
         self.reward_function_index = reward_function_index
-        reward_function_index_max = 4
+        reward_function_index_max = 8
         if (reward_function_index > reward_function_index_max):
             self.logger.critical(f"Reward function index {reward_function_index} is bigger than the maximum {reward_function_index_max}. using 0 instead!")
             self.reward_function_index = 0
@@ -45,6 +47,7 @@ class SimulationDataHandler:
         self.transaction_cost_factor = transaction_cost_factor
         self.action_factor = 0.5
         self.step_count = 0
+        self.is_buy = False
         self.feature_indices = [i for i, feature in enumerate(['timestamp', 'close', 'volume', 'sma', 'ema', 'rsi', 'macd', 'bollinger_high', 'bollinger_low', 'vmap', 'percentage_returns', 'log_returns']) if feature in crypto_features]
         self.usdc_held = initial_volume  # Initialize USDC account in memory
         self.minimum_number_of_cryptos = 1 #? set to 1 because we will start handling data in sequence instead of parallel
@@ -65,6 +68,9 @@ class SimulationDataHandler:
         
         # self.prediction_cache = self.fetch_all_prediction_data()
         self.state = self.get_current_state()
+        self.initial_crypto_price = self.get_crypto_value_from_cache(self.crypto.symbol, self.timestamp)
+        self.crypto_price = self.get_crypto_value_from_cache(self.crypto.symbol, self.timestamp)
+        
         self.past_volumes = []
         self.short_term_reward_window = 10
         # self.logger.setLevel(logging.WARNING)
@@ -75,7 +81,6 @@ class SimulationDataHandler:
         Load historical data for the current crypto from a Parquet file.
         If the file does not exist, an exception is raised (or you could fall back to a database query).
         """
-        #! Noise?
         file_path = os.path.join(ExportFolder.EXPORT_FOLDER.value, f"{self.crypto.symbol}.parquet")
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"Historical data file for {self.crypto.symbol} not found at {file_path}")
@@ -106,10 +111,40 @@ class SimulationDataHandler:
         df.sort_index(inplace=True)
         # **NEW**: Fill missing values so no NaNs propagate.
         df.fillna(0, inplace=True)
+        df = self.add_trade_outcome_column(df)
         # Return a dictionary mapping symbol to its DataFrame (for compatibility with your code).
         self.timestamp_to_index = {ts: idx for idx, ts in enumerate(df.index)}
-        # print(df.head(100))
         return {self.crypto.symbol: df}
+    
+    def add_trade_outcome_column(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Adds a new column 'trade_outcome' to the DataFrame. For each row,
+        if buying at that row's close price would eventually result in a profit
+        (i.e. the 'close' price hits 103% of that price before falling to 99%),
+        assign 1; if it would result in a loss (99% reached first), assign -1;
+        if it cannot be determined (no threshold is reached until the end of the interval), assign 0.
+        """
+        #! 0.6s for 12800 data points
+        outcomes = np.zeros(len(df), dtype=int)
+        close_vals = df['close'].values
+        n = len(close_vals)
+        # For each row, scan ahead for the first occurrence of the thresholds.
+        for i in range(n):
+            p0 = close_vals[i]
+            upper = p0 * 1.03
+            lower = p0 * 0.99
+            outcome = 0
+            # Only search if there are rows ahead
+            for j in range(i+1, n):
+                if close_vals[j] >= upper:
+                    outcome = 1
+                    break
+                elif close_vals[j] <= lower:
+                    outcome = -1
+                    break
+            outcomes[i] = outcome
+        df['trade_outcome'] = outcomes
+        return df
 
     def fetch_all_historical_data(self) -> Dict[str, pd.DataFrame]:
         dataframes = {}
@@ -282,7 +317,7 @@ class SimulationDataHandler:
                 losing_trade_percentage = 0
             total_days = len(self.holding_actions) / 288.0 # 1440/5 = 288
             actions_per_day = total_actions / float(total_days)
-            self.logger.info(f"fin w/: {self.total_volume:.2f}$. est: {expected_total_gain:.2f}$. Hodl: {sum(self.holding_actions)} / {len(self.holding_actions)}. win: {self.winning_trades}({winning_trade_percentage*100:.1f}%). lose: {self.losing_trades}({losing_trade_percentage*100:.1f}%). Act/d: {actions_per_day:.2f}. timerange: {self.initial_timestamp} - {self.timestamp}")
+            self.logger.info(f"{self.model_name}: fin w/: {self.total_volume:.2f}$. est: {expected_total_gain:.2f}$. Hodl: {sum(self.holding_actions)} / {len(self.holding_actions)}. win: {self.winning_trades}({winning_trade_percentage*100:.1f}%). lose: {self.losing_trades}({losing_trade_percentage*100:.1f}%). Act/d: {actions_per_day:.2f}. timerange: {self.initial_timestamp} - {self.timestamp}")
         new_crypto_data = self.get_new_crypto_data()
         state = np.concatenate((np.array([self.total_volume, self.usdc_held]),
                                 holdings, new_crypto_data))
@@ -316,6 +351,7 @@ class SimulationDataHandler:
 
     def update_state(self, action) -> Tuple[npt.NDArray[np.float16], float, bool, Dict[Any, Any]]:
         crypto_value = self.get_crypto_value_from_cache(self.crypto.symbol, self.timestamp)
+        self.crypto_price = crypto_value #! make this value available to logger
         if not crypto_value:
             self.logger.warning(f"No crypto value found for {self.timestamp}")
             return self.state, 0.0, False, {}
@@ -323,6 +359,7 @@ class SimulationDataHandler:
         is_buy = (action[0] > self.action_factor) and (self.usdc_held > 5) #! only buy with 5 or more usdc
         hold = not is_buy
         self.holding_actions.append(hold)
+        self.is_buy = is_buy
         available_liquidity = self.usdc_held - self.costs_for_action
         # if is_buy and not self.apply_latency():
         if is_buy:
@@ -377,6 +414,31 @@ class SimulationDataHandler:
         close_idx = 0
         return float(self.dataframe_cache_np[timestamp_idx, close_idx])
     
+    def get_trade_outcome_at_timestamp(self, timestamp: datetime) -> int:
+        """
+        Returns the trade outcome (+1 for a win, -1 for a loss, or 0 if undecided)
+        for the given timestamp from the loaded DataFrame.
+        If an exact match is not found, it will use the nearest timestamp.
+        """
+        # Retrieve the DataFrame for the current crypto.
+        df = self.dataframe_cache[self.crypto.symbol]
+        # Convert the input timestamp to a pandas Timestamp.
+        ts = pd.Timestamp(timestamp)
+        
+        try:
+            # Try to get the outcome for an exact match.
+            outcome = df.loc[ts, 'trade_outcome']
+        except KeyError:
+            # If the exact timestamp is not in the index, find the nearest one.
+            nearest_idx = df.index.get_indexer([ts], method='nearest')[0]
+            if nearest_idx == -1:
+                # If no match is found, return 0 as a default.
+                outcome = 0
+            else:
+                outcome = df.iloc[nearest_idx]['trade_outcome']
+        return outcome
+
+    
     def get_crypto_values_from_cache_vectorized(self, timestamp: datetime) -> np.ndarray:
         return np.array([self.get_crypto_value_from_cache(self.crypto.symbol, timestamp)], dtype=np.float32)
 
@@ -393,6 +455,7 @@ class SimulationDataHandler:
                 if sum(self.holding_actions) != 0 and len(self.holding_actions) > 0:
                     self.logger.info(f"Resetting training with: {self.total_volume:.2f}$. Holding actions: {sum(self.holding_actions)} / {len(self.holding_actions)}")
         self.step_count = 0
+        self.is_buy = False
         self.action_factor = 0.5
         self.initial_timestamp = None
         self.maker_fee = 0.001  # 0.25% based on Advanced 2, might drop including rebate
@@ -418,6 +481,9 @@ class SimulationDataHandler:
         self.dataframe_cache_np = self.convert_dataframe_cache_to_combined_numpy(self.dataframe_cache)
 
         self.initial_state = self.get_current_state()
+        self.initial_crypto_price = self.get_crypto_value_from_cache(self.crypto.symbol, self.timestamp)
+        self.crypto_price = self.get_crypto_value_from_cache(self.crypto.symbol, self.timestamp)
+        
         self.past_volumes = []
         self.short_term_reward_window = 10
         return self.initial_state
@@ -602,6 +668,203 @@ class SimulationDataHandler:
                 0.5 * dynamic_profit_bonus +  # encourages beating the moving profit target
                 2.0 * trade_quality_bonus +   # incentivizes a high win rate
                 0.2 * trade_frequency_bonus)  # encourages at least a minimum number of trades
+
+        # Optionally, scale the reward:
+        reward *= 5.0
+        return reward
+    
+    def reward_function_5(self, action: Actions) -> float:
+        """
+        A custom reward function that rewards overall portfolio gain, encourages
+        meeting a dynamic profit target (which increases by 1% per day), and 
+        incentivizes both a high win/loss ratio and a baseline number of trades per day.
+        
+        Assumptions:
+        - self.total_volume is the current portfolio value.
+        - self.initial_volume is the starting portfolio value.
+        - self.winning_trades and self.losing_trades are cumulative counts.
+        - self.daily_trades is the number of trades executed on the current day.
+        - self.day_count is the current trading day (starting at 1).
+        """
+        # Part 1: Net return as baseline (e.g., 5% net return = 0.05)
+        net_return = (self.total_volume / self.initial_volume) - 1
+        if self.is_buy:
+            trade_outcome = self.get_trade_outcome_at_timestamp(self.timestamp)
+        else:
+            trade_outcome = 0
+        # 0 if: not buy action OR trade outcome unknown
+        # 1 if: buy action and AND favourable trade outcome
+        # -1 if: buy action buy AND unfavourable outcome
+        immediate_trade_reward = int(self.is_buy) * trade_outcome
+        
+        
+
+        # Combine all parts with weights that you can tune:
+        reward = (0.25 * net_return +
+                0.2 * immediate_trade_reward)  # encourages at least a minimum number of trades
+
+        # Optionally, scale the reward:
+        reward *= 5.0
+        reward *= 5/2.0 # account for only 2 of 5 total components
+        return reward
+    
+    def reward_function_6(self, action: Actions) -> float:
+        """
+        A custom reward function that rewards overall portfolio gain, encourages
+        meeting a dynamic profit target (which increases by 1% per day), and 
+        incentivizes both a high win/loss ratio and a baseline number of trades per day.
+        
+        Assumptions:
+        - self.total_volume is the current portfolio value.
+        - self.initial_volume is the starting portfolio value.
+        - self.winning_trades and self.losing_trades are cumulative counts.
+        - self.daily_trades is the number of trades executed on the current day.
+        - self.day_count is the current trading day (starting at 1).
+        """
+        # Part 1: Net return as baseline (e.g., 5% net return = 0.05)
+        net_return = (self.total_volume / self.initial_volume) - 1
+        if self.is_buy:
+            trade_outcome = self.get_trade_outcome_at_timestamp(self.timestamp)
+        else:
+            trade_outcome = 0
+        # 0 if: not buy action OR trade outcome unknown
+        # 1 if: buy action and AND favourable trade outcome
+        # -1 if: buy action buy AND unfavourable outcome
+        immediate_trade_reward = int(self.is_buy) * trade_outcome
+
+        # Part 3: Trade quality bonus: higher win ratio is better.
+        total_trades = self.winning_trades + self.losing_trades
+        if total_trades > 5:
+            # If win rate is above 50%, bonus is positive; below 50% a penalty.
+            trade_quality_bonus = (self.winning_trades / float(total_trades)) - 0.4 # 40% winning trades is great
+        else:
+            trade_quality_bonus = 0.0
+
+        # Combine all parts with weights that you can tune:
+        reward = (0.25 * net_return +      # overall portfolio gain matters, but moderate weight
+                2.0 * trade_quality_bonus +   # incentivizes a high win rate
+                0.2 * immediate_trade_reward)  # encourages at least a minimum number of trades
+
+        # Optionally, scale the reward:
+        reward *= 5.0
+        reward *= 5/3.0 # account for only 3 of 5 total components
+        return reward
+    
+    def reward_function_7(self, action: Actions) -> float:
+        """
+        A custom reward function that rewards overall portfolio gain, encourages
+        meeting a dynamic profit target (which increases by 1% per day), and 
+        incentivizes both a high win/loss ratio and a baseline number of trades per day.
+        
+        Assumptions:
+        - self.total_volume is the current portfolio value.
+        - self.initial_volume is the starting portfolio value.
+        - self.winning_trades and self.losing_trades are cumulative counts.
+        - self.daily_trades is the number of trades executed on the current day.
+        - self.day_count is the current trading day (starting at 1).
+        """
+        # Part 1: Net return as baseline (e.g., 5% net return = 0.05)
+        net_return = (self.total_volume / self.initial_volume) - 1
+        if self.is_buy:
+            trade_outcome = self.get_trade_outcome_at_timestamp(self.timestamp)
+        else:
+            trade_outcome = 0
+        # 0 if: not buy action OR trade outcome unknown
+        # 1 if: buy action and AND favourable trade outcome
+        # -1 if: buy action buy AND unfavourable outcome
+        immediate_trade_reward = int(self.is_buy) * trade_outcome
+        
+        # Part 2: Dynamic profit target.
+        # Increase the profit target by 1% per day after day 1.
+        trading_for_days = self.step_count / 288.0 # 288 steps are a full day for 5 min increments
+        
+        # Part 3: Trade quality bonus: higher win ratio is better.
+        total_trades = self.winning_trades + self.losing_trades
+        if total_trades > 5:
+            # If win rate is above 50%, bonus is positive; below 50% a penalty.
+            trade_quality_bonus = (self.winning_trades / float(total_trades)) - 0.4 # 40% winning trades is great
+        else:
+            trade_quality_bonus = 0.0
+
+        # Part 4: Trade frequency bonus:
+        # We require a baseline of, say, 2 trades per day.
+        baseline_trades = 2.0
+        # self.daily_trades should be updated externally each day.
+        if trading_for_days > 1:
+            current_daily_trades = total_trades / trading_for_days
+            trade_frequency_bonus = (current_daily_trades - baseline_trades) / baseline_trades
+        else:
+            current_daily_trades = 0
+            trade_frequency_bonus = 0
+
+        # Combine all parts with weights that you can tune:
+        reward = (0.25 * net_return +      # overall portfolio gain matters, but moderate weight
+                2.0 * trade_quality_bonus +   # incentivizes a high win rate
+                0.2 * trade_frequency_bonus +
+                0.2 * immediate_trade_reward)  # encourages at least a minimum number of trades
+
+        # Optionally, scale the reward:
+        reward *= 5.0
+        reward *= 5.0 / 4.0 # account for only 4 of 5 total components
+        return reward
+    
+    def reward_function_8(self, action: Actions) -> float:
+        """
+        A custom reward function that rewards overall portfolio gain, encourages
+        meeting a dynamic profit target (which increases by 1% per day), and 
+        incentivizes both a high win/loss ratio and a baseline number of trades per day.
+        
+        Assumptions:
+        - self.total_volume is the current portfolio value.
+        - self.initial_volume is the starting portfolio value.
+        - self.winning_trades and self.losing_trades are cumulative counts.
+        - self.daily_trades is the number of trades executed on the current day.
+        - self.day_count is the current trading day (starting at 1).
+        """
+        # Part 1: Net return as baseline (e.g., 5% net return = 0.05)
+        net_return = (self.total_volume / self.initial_volume) - 1
+        if self.is_buy:
+            trade_outcome = self.get_trade_outcome_at_timestamp(self.timestamp)
+        else:
+            trade_outcome = 0
+        # 0 if: not buy action OR trade outcome unknown
+        # 1 if: buy action and AND favourable trade outcome
+        # -1 if: buy action buy AND unfavourable outcome
+        immediate_trade_reward = int(self.is_buy) * trade_outcome
+        
+        # Part 2: Dynamic profit target.
+        # Increase the profit target by 1% per day after day 1.
+        trading_for_days = self.step_count / 288.0 # 288 steps are a full day for 5 min increments
+        day_multiplier = self.dynamic_reward_exponent ** trading_for_days
+        profit_threshold = day_multiplier * self.initial_volume  # e.g., on day 2, target is 1%, on day 3, target is 2%, etc.
+        # Reward (or penalize) based on how much net_return exceeds (or falls short of) the target.
+        dynamic_profit_bonus = net_return / profit_threshold - 1
+
+        # Part 3: Trade quality bonus: higher win ratio is better.
+        total_trades = self.winning_trades + self.losing_trades
+        if total_trades > 5:
+            # If win rate is above 50%, bonus is positive; below 50% a penalty.
+            trade_quality_bonus = (self.winning_trades / float(total_trades)) - 0.4 # 40% winning trades is great
+        else:
+            trade_quality_bonus = 0.0
+
+        # Part 4: Trade frequency bonus:
+        # We require a baseline of, say, 2 trades per day.
+        baseline_trades = 2.0
+        # self.daily_trades should be updated externally each day.
+        if trading_for_days > 1:
+            current_daily_trades = total_trades / trading_for_days
+            trade_frequency_bonus = (current_daily_trades - baseline_trades) / baseline_trades
+        else:
+            current_daily_trades = 0
+            trade_frequency_bonus = 0
+
+        # Combine all parts with weights that you can tune:
+        reward = (0.25 * net_return +      # overall portfolio gain matters, but moderate weight
+                0.5 * dynamic_profit_bonus +  # encourages beating the moving profit target
+                2.0 * trade_quality_bonus +   # incentivizes a high win rate
+                0.2 * trade_frequency_bonus +
+                0.2 * immediate_trade_reward)  # encourages at least a minimum number of trades
 
         # Optionally, scale the reward:
         reward *= 5.0

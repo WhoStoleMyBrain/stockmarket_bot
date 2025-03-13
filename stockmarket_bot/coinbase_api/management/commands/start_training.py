@@ -168,12 +168,12 @@ class Command(BaseCommand):
                 if self.model is None or self.model.n_steps != interval:
                     if os.path.exists(model_path):
                         print('Loaded model!')
-                        env = CustomEnv(data_handler=SimulationDataHandler(BTC ,total_steps=interval, **items_for_datahandler))
+                        env = CustomEnv(data_handler=SimulationDataHandler(BTC ,total_steps=interval, model_name=continue_training if continue_training else training_name, **items_for_datahandler))
                         self.env = env
                         self.model = RecurrentPPO.load(model_path, env=env)
                         self.model.tensorboard_log = log_dir
                     else:
-                        env = CustomEnv(data_handler=SimulationDataHandler(BTC, total_steps=interval, **items_for_datahandler))
+                        env = CustomEnv(data_handler=SimulationDataHandler(BTC, total_steps=interval, model_name=continue_training if continue_training else training_name, **items_for_datahandler))
                         self.env = env
                         self.model = RecurrentPPO(
                             "MlpLstmPolicy",
