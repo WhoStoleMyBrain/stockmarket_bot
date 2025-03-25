@@ -1,0 +1,76 @@
+{
+    "total_timesteps": 7e6,
+    "phases": [
+        {
+            "percentage": 25,
+            "intervals": [3840],
+            "interval_weights": [1],
+            "interval_transaction_costs": 0.0,
+            "initial_lr": 3e-4,
+            "final_lr": 1e-4,
+            "clip_range": 0.1,
+            "batch_size": 256,
+            "n_epochs": 4,
+            "reward_function_index": 9,
+            "noise_level": 0.00,
+            "slippage_level": 0.0,
+            "dynamic_reward_exponent": 1.0
+        },
+        {
+            "percentage": 25,
+            "intervals": [12800],
+            "interval_weights": [1],
+            "interval_transaction_costs": 0.0,
+            "initial_lr": 3e-4,
+            "final_lr": 1e-4,
+            "clip_range": 0.1,
+            "batch_size": 256,
+            "n_epochs": 4,
+            "reward_function_index": 9,
+            "noise_level": 0.00,
+            "slippage_level": 0.0,
+            "dynamic_reward_exponent": 1.0
+        },
+        {
+            "percentage": 25,
+            "intervals": [16640],
+            "interval_weights": [1],
+            "interval_transaction_costs": 0.0,
+            "initial_lr": 3e-4,
+            "final_lr": 1e-4,
+            "clip_range": 0.1,
+            "batch_size": 256,
+            "n_epochs": 4,
+            "reward_function_index": 9,
+            "noise_level": 0.00,
+            "slippage_level": 0.0,
+            "dynamic_reward_exponent": 1.0
+        },
+        {
+            "percentage": 25,
+            "intervals": [33280],
+            "interval_weights": [1],
+            "interval_transaction_costs": 0.0,
+            "initial_lr": 3e-4,
+            "final_lr": 1e-4,
+            "clip_range": 0.1,
+            "batch_size": 256,
+            "n_epochs": 4,
+            "reward_function_index": 9,
+            "noise_level": 0.00,
+            "slippage_level": 0.0,
+            "dynamic_reward_exponent": 1.0
+        }
+    ],
+    "policy_parameters": {
+        "net_arch": {
+            "shared": [256, 128],
+            "pi": [128, 64],
+            "vf": [128, 64]
+        },
+        "lstm_hidden_size": 128,
+        "lstm_num_layers": 1
+    },
+    "model_path": "coinbase_api/ml_models/rl_model.pkl",
+    "log_dir": "./tensorboard_logs"
+}

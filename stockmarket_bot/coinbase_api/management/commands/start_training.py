@@ -8,6 +8,7 @@ import traceback
 import json
 import shutil
 from coinbase_api.ml_models.custom_policy import CustomPolicy
+from coinbase_api.ml_models.custom_recurrent_policy import CustomRecurrentPolicy
 from coinbase_api.ml_models.data_handlers.simulation_data_handler import SimulationDataHandler
 from coinbase_api.ml_models.rl_model_logging_callback import RLModelLoggingCallback
 from coinbase_api.models.generated_models import *
@@ -22,10 +23,12 @@ class LinearSchedule:
     def __init__(self, initial_lr, final_lr, duration):
         self.initial_lr = initial_lr
         self.final_lr = final_lr
-        self.duration = duration
+        self.duration = float(duration)
 
     def __call__(self, progress_remaining):
-        progress = 1 - progress_remaining
+        progress = progress_remaining / self.duration
+        # Clamp progress between 0 and 1:
+        progress = min(max(progress, 0), 1)
         return self.initial_lr + progress * (self.final_lr - self.initial_lr)
     
 def get_clip_range(clip_range):
@@ -107,7 +110,7 @@ class Command(BaseCommand):
         lstm_hidden_size = policy_parameters.get('lstm_hidden_size', 128)
         lstm_num_layers = policy_parameters.get('lstm_num_layers', 1)
         current_stage = config.get('current_stage', 0)
-        persistent_rl_logging_callback = RLModelLoggingCallback(log_interval=25, verbose=True)
+        persistent_rl_logging_callback = RLModelLoggingCallback(log_interval=100, verbose=True)
         for phase_index, phase in enumerate(phases):
             if phase_index < current_stage:
                 continue
@@ -170,18 +173,21 @@ class Command(BaseCommand):
                         print('Loaded model!')
                         env = CustomEnv(data_handler=SimulationDataHandler(BTC ,total_steps=interval, model_name=continue_training if continue_training else training_name, **items_for_datahandler))
                         self.env = env
-                        self.model = RecurrentPPO.load(model_path, env=env)
+                        self.model = PPO.load(model_path, env=env)
+                        # self.model = RecurrentPPO.load(model_path, env=env)
                         self.model.tensorboard_log = log_dir
                     else:
                         env = CustomEnv(data_handler=SimulationDataHandler(BTC, total_steps=interval, model_name=continue_training if continue_training else training_name, **items_for_datahandler))
                         self.env = env
-                        self.model = RecurrentPPO(
-                            "MlpLstmPolicy",
-                            # CustomPolicy,
+                        self.model = PPO(
+                        # self.model = RecurrentPPO(
+                            # "MlpLstmPolicy",
+                            # "MlpPolicy",
+                            CustomRecurrentPolicy,
                             policy_kwargs={
                                 "net_arch": net_arch,
                                 "lstm_hidden_size": lstm_hidden_size,
-                                "n_lstm_layers": lstm_num_layers
+                                "lstm_num_layers": lstm_num_layers
                             },
                             env=env,
                             verbose=0,

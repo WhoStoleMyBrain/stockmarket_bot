@@ -1,1 +1,1 @@
-python3.12.exe .\manage.py start_training --config .\coinbase_api\ml_models\training_configs\training_config_12.json
+python3.12.exe .\manage.py start_training --config .\coinbase_api\ml_models\training_configs\training_config_15.json

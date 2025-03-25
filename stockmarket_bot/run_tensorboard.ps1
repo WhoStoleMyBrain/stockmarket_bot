@@ -1,1 +1,1 @@
-tensorboard.exe --logdir=./tensorboard_logs
+tensorboard.exe --logdir=./tensorboard_logs/training_config_15_22
