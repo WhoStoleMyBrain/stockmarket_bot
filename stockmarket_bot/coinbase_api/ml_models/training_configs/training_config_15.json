@@ -14,7 +14,9 @@
             "reward_function_index": 11,
             "noise_level": 0.00,
             "slippage_level": 0.0,
-            "dynamic_reward_exponent": 1.0
+            "dynamic_reward_exponent": 1.0,
+            "fixed_starting_timestamp": 40000,
+            "use_fixed_start": true
         }
     ],
     "policy_parameters": {

@@ -7,8 +7,7 @@ from coinbase_api.ml_models.RL_decider_model import CustomEnv
 import traceback
 import json
 import shutil
-from coinbase_api.ml_models.custom_policy import CustomPolicy
-from coinbase_api.ml_models.custom_recurrent_policy import CustomRecurrentPolicy
+from sb3_contrib.common.recurrent.policies import RecurrentActorCriticPolicy
 from coinbase_api.ml_models.data_handlers.simulation_data_handler import SimulationDataHandler
 from coinbase_api.ml_models.rl_model_logging_callback import RLModelLoggingCallback
 from coinbase_api.models.generated_models import *
@@ -127,6 +126,8 @@ class Command(BaseCommand):
             noise_level = phase.get('noise_level', 0.00)
             slippage_level = phase.get('slippage_level', 0.00)
             dynamic_reward_exponent = phase.get('dynamic_reward_exponent', 1.00)
+            fixed_starting_timestamp = phase.get('fixed_starting_timestamp', 40000)
+            use_fixed_start = phase.get('use_fixed_start', False)
             checkpoint_callback = CheckpointCallback(save_freq=100000, save_path=f"{active_training_path}_checkpoint", name_prefix='rl_model_checkpoint')
 
             interval_list = [interval for interval, weight in zip(intervals, interval_weights) for _ in range(weight)]
@@ -155,6 +156,8 @@ class Command(BaseCommand):
                 print(f"noise_level: {noise_level}")
                 print(f"slippage level: {slippage_level}")
                 print(f"dynamic_reward_exponent: {dynamic_reward_exponent}")
+                print(f"fixed_starting_timestamp: {fixed_starting_timestamp}")
+                print(f"use_fixed_start: {use_fixed_start}")
                 print(f"net_arch: {net_arch}")
                 print(f"lstm_hidden_size: {lstm_hidden_size}")
                 print(f"lstm_num_layers: {lstm_num_layers}")
@@ -166,7 +169,9 @@ class Command(BaseCommand):
                     'reward_function_index':reward_function_index,
                     'noise_level':noise_level,
                     'slippage_level':slippage_level,
-                    "dynamic_reward_exponent": dynamic_reward_exponent
+                    'dynamic_reward_exponent': dynamic_reward_exponent,
+                    'fixed_starting_timestamp':fixed_starting_timestamp,
+                    'use_fixed_start':use_fixed_start
                 }
                 if self.model is None or self.model.n_steps != interval:
                     if os.path.exists(model_path):
@@ -179,16 +184,23 @@ class Command(BaseCommand):
                     else:
                         env = CustomEnv(data_handler=SimulationDataHandler(BTC, total_steps=interval, model_name=continue_training if continue_training else training_name, **items_for_datahandler))
                         self.env = env
-                        self.model = PPO(
-                        # self.model = RecurrentPPO(
+                        # self.model = PPO(
+                        self.model = RecurrentPPO(
                             # "MlpLstmPolicy",
                             # "MlpPolicy",
-                            CustomRecurrentPolicy,
+                            # CustomRecurrentPolicy,
+                            RecurrentActorCriticPolicy,
                             policy_kwargs={
                                 "net_arch": net_arch,
                                 "lstm_hidden_size": lstm_hidden_size,
-                                "lstm_num_layers": lstm_num_layers
+                                "n_lstm_layers": lstm_num_layers,
+                                # "n_envs": 1, #! not needed for recurrent actor critic policy
+                                "optimizer_class":torch.optim.Adam,
+                                # "optimizer_kwargs":{
+                                #     "weight_decay": 1e-4
+                                #     },
                             },
+                            
                             env=env,
                             verbose=0,
                             tensorboard_log=log_dir,

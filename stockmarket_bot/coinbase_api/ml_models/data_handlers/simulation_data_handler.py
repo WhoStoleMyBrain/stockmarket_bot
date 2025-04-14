@@ -18,7 +18,7 @@ except ImportError:
     ds = None  # Fall back to in-memory filtering if PyArrow is not available
 
 class SimulationDataHandler:
-    def __init__(self, crypto: AbstractOHLCV, initial_volume=1000, model_name = "default_model_name", total_steps=1024, transaction_cost_factor=1.0, reward_function_index=0, noise_level=0.01, slippage_level=0.00, dynamic_reward_exponent = 1.005) -> None:
+    def __init__(self, crypto: AbstractOHLCV, initial_volume=1000, model_name = "default_model_name", total_steps=1024, transaction_cost_factor=1.0, reward_function_index=0, noise_level=0.01, slippage_level=0.00, dynamic_reward_exponent = 1.005, fixed_starting_timestamp=40000, use_fixed_start=False) -> None:
         logging.basicConfig(
             filename='/logs/sim_logs/simulation.log',
             level=logging.INFO,
@@ -38,6 +38,8 @@ class SimulationDataHandler:
         self.dynamic_reward_exponent = dynamic_reward_exponent
         self.logger = logging.getLogger(__name__)
         self.reward_function_index = reward_function_index
+        self.fixed_starting_timestamp = fixed_starting_timestamp
+        self.use_fixed_start = use_fixed_start
         reward_function_index_max = 11
         if (reward_function_index > reward_function_index_max):
             self.logger.critical(f"Reward function index {reward_function_index} is bigger than the maximum {reward_function_index_max}. using 0 instead!")
@@ -292,12 +294,18 @@ class SimulationDataHandler:
 
     def get_starting_timestamp(self) -> datetime:
         if self.initial_timestamp is None:
-            hours = self.maximum_timestamp - self.earliest_timestamp
-            hours_number = hours.total_seconds() // 3600
-            # rand_start = random.randint(0, int(hours_number) - int((self.buffer/12))) #! /12 because we use 5 min intervals instead of 1 hour. Buffer is 2 * total_steps, so total_steps/6 in hourly segments
-            rand_start = 40000 #! try with fixed!
-            print(f'starting timestamp: {self.earliest_timestamp + timedelta(hours=rand_start)}\tminimum: {self.earliest_timestamp}\tmaximum: {self.maximum_timestamp}\t random number: {rand_start}/{int(hours_number)}')
-            return self.earliest_timestamp + timedelta(hours=rand_start)
+            if self.use_fixed_start:
+                hours = self.maximum_timestamp - self.earliest_timestamp
+                hours_number = hours.total_seconds() // 3600
+                rand_start = self.fixed_starting_timestamp
+                print(f'FIXED start: {self.earliest_timestamp + timedelta(hours=rand_start)}\tminimum: {self.earliest_timestamp}\tmaximum: {self.maximum_timestamp}\t random number: {rand_start}/{int(hours_number)}')
+                return self.earliest_timestamp + timedelta(hours=rand_start)
+            else:
+                hours = self.maximum_timestamp - self.earliest_timestamp
+                hours_number = hours.total_seconds() // 3600
+                rand_start = random.randint(0, int(hours_number) - int((self.buffer/12))) #! /12 because we use 5 min intervals instead of 1 hour. Buffer is 2 * total_steps, so total_steps/6 in hourly segments
+                print(f'starting timestamp: {self.earliest_timestamp + timedelta(hours=rand_start)}\tminimum: {self.earliest_timestamp}\tmaximum: {self.maximum_timestamp}\t random number: {rand_start}/{int(hours_number)}')
+                return self.earliest_timestamp + timedelta(hours=rand_start)
         print('initial timestamp was already set')
         return self.initial_timestamp
 
