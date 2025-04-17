@@ -1,0 +1,33 @@
+{
+    "total_timesteps": 2e7,
+    "phases": [
+        {
+            "percentage": 100,
+            "intervals": [3840],
+            "interval_weights": [1],
+            "interval_transaction_costs": 0.0,
+            "initial_lr": 3e-4,
+            "final_lr": 1e-5,
+            "clip_range": 0.1,
+            "batch_size": 512,
+            "n_epochs": 4,
+            "reward_function_index": 12,
+            "noise_level": 0.00,
+            "slippage_level": 0.0,
+            "dynamic_reward_exponent": 1.0,
+            "fixed_starting_timestamp": 45000,
+            "use_fixed_start": true
+        }
+    ],
+    "policy_parameters": {
+        "net_arch": {
+            "shared": [512, 256, 128],
+            "pi": [256, 128, 64, 32],
+            "vf": [256, 128, 64, 32]
+        },
+        "lstm_hidden_size": 256,
+        "lstm_num_layers": 1
+    },
+    "model_path": "coinbase_api/ml_models/rl_model.pkl",
+    "log_dir": "./tensorboard_logs"
+}

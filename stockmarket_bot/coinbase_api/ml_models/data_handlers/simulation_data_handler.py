@@ -40,7 +40,7 @@ class SimulationDataHandler:
         self.reward_function_index = reward_function_index
         self.fixed_starting_timestamp = fixed_starting_timestamp
         self.use_fixed_start = use_fixed_start
-        reward_function_index_max = 11
+        reward_function_index_max = 12
         if (reward_function_index > reward_function_index_max):
             self.logger.critical(f"Reward function index {reward_function_index} is bigger than the maximum {reward_function_index_max}. using 0 instead!")
             self.reward_function_index = 0
@@ -562,6 +562,8 @@ class SimulationDataHandler:
             return self.reward_function_10(action)
         elif self.reward_function_index == 11:
             return self.reward_function_11(action)
+        elif self.reward_function_index == 12:
+            return self.reward_function_12(action)
         else:
             return 0.0
 
@@ -1022,4 +1024,36 @@ class SimulationDataHandler:
         immediate_trade_reward = trade_outcome if self.is_buy else -trade_outcome
         
         reward =  immediate_trade_reward # encourages at least a minimum number of trades
+        return reward
+    
+    def reward_function_12(self, action: Actions) -> float:
+        """
+        A custom reward function that rewards overall portfolio gain, encourages
+        meeting a dynamic profit target (which increases by 1% per day), and 
+        incentivizes both a high win/loss ratio and a baseline number of trades per day.
+        
+        Assumptions:
+        - self.total_volume is the current portfolio value.
+        - self.initial_volume is the starting portfolio value.
+        - self.winning_trades and self.losing_trades are cumulative counts.
+        - self.daily_trades is the number of trades executed on the current day.
+        - self.day_count is the current trading day (starting at 1).
+        """
+        net_return = (self.total_volume / self.initial_volume) - 1
+        # Part 1: Net return as baseline (e.g., 5% net return = 0.05)
+        trade_outcome = self.get_trade_outcome_at_timestamp(self.timestamp)
+
+        trading_for_days = self.step_count / 288.0 # 288 steps are a full day for 5 min increments
+        total_trades = self.winning_trades + self.losing_trades
+        
+        if trading_for_days > 1:
+            current_daily_trades = total_trades / trading_for_days
+            self.current_daily_trades = current_daily_trades
+        else:
+            current_daily_trades = 0
+            self.current_daily_trades = current_daily_trades
+        
+        immediate_trade_reward = trade_outcome if self.is_buy else -trade_outcome
+        
+        reward = 5 * net_return + immediate_trade_reward # encourages at least a minimum number of trades
         return reward
